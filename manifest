@@ -1,0 +1,19 @@
+appname=com.fnos.kiosk
+version=0.1.0
+display_name=浏览器屏
+desc=<b>把任意 Web 页面直接显示到 NAS 副屏</b>——基于 headless Chromium + CDP，将 URL 列表轮换或单 URL 占用全屏渲染到 /dev/fb0。<br><br>✦ 多种内容源：远程 URL / 本地 HTML 文件 / 单页独占刷新<br>✦ 多页轮换：URL 列表按时间自动翻页（与 fnos-dashboard 同套机制）<br>✦ 显示方向：0°/90°/180°/270° 旋转、PPI 自适应缩放<br>✦ 渲染缓存：CDP 截图按需加载，失败自动恢复<br>✦ 安全：管理接口仅限 127.0.0.1，URL 白名单防 SSRF（可配置放行）<br><br>需要本机已安装 <code>chromium</code> 或 <code>chromium-browser</code>（apt 安装即可）。<br>📦 项目地址：<a href='https://github.com/neon9809/fnos-kiosk'>github.com/neon9809/fnos-kiosk</a><br>👤 作者主页：<a href='https://github.com/neon9809'>github.com/neon9809</a>
+platform=all
+source=thirdparty
+maintainer=neon9809
+maintainer_url=https://github.com/neon9809
+distributor=neon9809
+distributor_url=https://github.com/neon9809
+app_link=https://github.com/neon9809/fnos-kiosk
+service_port=8200
+checkport=true
+os_min_version=1.1.0
+install_dep_apps=python312
+desktop_uidir=ui
+desktop_applaunchname=com.fnos.kiosk.main
+ctl_stop=true
+changelog=0.1.0：首个版本。headless Chromium + CDP 驱动，多 URL 轮换 + 单 URL 全屏 + 本地 HTML 文件三种内容源；保留 fnos-dashboard 的 fb_render 旋转/PIL 双渲染/udev 规则/CGI 反代/仅 127.0.0.1 管理面；URL 白名单防 SSRF。

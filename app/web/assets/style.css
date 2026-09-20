@@ -1,0 +1,179 @@
+/* fnOS 浏览器屏 —— 主题化样式 */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --radius: 16px;
+  --ok: #34d399;
+}
+
+body[data-theme="midnight"] {
+  --bg1: #0a1322; --bg2: #12244a;
+  --card: #121e36; --card-brd: rgba(148, 180, 255, .10);
+  --text: #e8eefb; --dim: #93a5c4;
+  --accent: #3b82f6; --accent-soft: rgba(59, 130, 246, .18);
+  --down: #34d399; --up: #fbbf24;
+  --warn: #f59e0b; --danger: #f87171;
+}
+body[data-theme="graphite"] {
+  --bg1: #0e1013; --bg2: #181c23;
+  --card: #171b22; --card-brd: rgba(255, 255, 255, .08);
+  --text: #e7eaf0; --dim: #9aa3b2;
+  --accent: #2dd4bf; --accent-soft: rgba(45, 212, 191, .16);
+  --down: #4ade80; --up: #fbbf24;
+  --warn: #f59e0b; --danger: #fb7185;
+}
+body[data-theme="emerald"] {
+  --bg1: #04231a; --bg2: #0a3d2c;
+  --card: #0b3226; --card-brd: rgba(120, 255, 200, .10);
+  --text: #e4f7ee; --dim: #8fc4ad;
+  --accent: #34d399; --accent-soft: rgba(52, 211, 153, .16);
+  --down: #5eead4; --up: #fcd34d;
+  --warn: #fbbf24; --danger: #fb7185;
+}
+body[data-theme="solar"] {
+  --bg1: #1c1204; --bg2: #3a250a;
+  --card: #2b1c08; --card-brd: rgba(255, 200, 120, .12);
+  --text: #fdf3e0; --dim: #c9a878;
+  --accent: #f59e0b; --accent-soft: rgba(245, 158, 11, .18);
+  --down: #4ade80; --up: #60a5fa;
+  --warn: #fbbf24; --danger: #f87171;
+}
+body[data-theme="sakura"] {
+  --bg1: #fdf1f6; --bg2: #f9dcea;
+  --card: #ffffff; --card-brd: rgba(236, 72, 153, .14);
+  --text: #402a35; --dim: #a3798c;
+  --accent: #ec4899; --accent-soft: rgba(236, 72, 153, .12);
+  --down: #10b981; --up: #8b5cf6;
+  --warn: #d97706; --danger: #e11d48;
+}
+body[data-theme="light"] {
+  --bg1: #f1f4f9; --bg2: #e6ebf4;
+  --card: #ffffff; --card-brd: rgba(30, 60, 120, .10);
+  --text: #1e293b; --dim: #64748b;
+  --accent: #2563eb; --accent-soft: rgba(37, 99, 235, .10);
+  --down: #059669; --up: #d97706;
+  --warn: #d97706; --danger: #dc2626;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(160deg, var(--bg1), var(--bg2)) fixed;
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+
+/* ---------------- 顶栏 ---------------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  max-width: 1440px; margin: 0 auto; padding: 18px 20px 4px;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand img {
+  width: 44px; height: 44px; border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+}
+.brand h1 { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
+.brand .sub { color: var(--dim); font-size: 12px; margin-top: 2px; }
+.brand .sub span + span { margin-left: 10px; }
+.top-actions { display: flex; align-items: center; gap: 10px; }
+.clock {
+  font-variant-numeric: tabular-nums; color: var(--dim); font-size: 14px;
+  margin-right: 4px;
+}
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: 1px solid var(--card-brd); background: var(--card);
+  color: var(--text); font-size: 16px; cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease;
+  text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+}
+.icon-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+/* ---------------- 卡片网格 ---------------- */
+.grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px; padding: 12px 20px 28px;
+  max-width: 1440px; margin: 0 auto;
+}
+.card {
+  background: var(--card); border: 1px solid var(--card-brd);
+  border-radius: var(--radius); padding: 16px 18px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.card-head h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+.badge {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+}
+
+/* KV 列表 */
+.kv-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; }
+.kv-grid .k { color: var(--dim); font-size: 13px; }
+.kv-grid .v { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* 页面列表 */
+.page-list { display: flex; flex-direction: column; gap: 8px; }
+.page-list.small { font-size: 13px; }
+.page-item {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255, 255, 255, .04);
+  padding: 8px 12px; border-radius: 10px;
+  border: 1px solid transparent;
+}
+.page-item.disabled { opacity: .5; }
+.page-item .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0;
+}
+.page-item .dot.single { background: var(--warn); }
+.page-item .dot.disabled { background: var(--dim); }
+.page-item .name { font-weight: 600; }
+.page-item .url {
+  color: var(--dim); font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+.page-item .tag {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 11px;
+}
+
+/* 预览 */
+.preview-wrap {
+  background: #000; border-radius: 10px; overflow: hidden;
+  aspect-ratio: 16 / 10;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.preview-wrap img {
+  width: 100%; height: 100%; object-fit: contain;
+}
+.preview-placeholder {
+  color: var(--dim); text-align: center; font-size: 14px;
+  padding: 40px 20px;
+}
+.auto-refresh { font-size: 12px; color: var(--dim); }
+.hint { color: var(--dim); font-size: 12px; }
+.hint.center { text-align: center; margin-top: 8px; }
+
+.offline {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  background: var(--danger); color: #fff;
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; z-index: 100;
+}
+
+@media (max-width: 800px) {
+  .grid { grid-template-columns: 1fr; }
+}

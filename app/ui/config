@@ -1,0 +1,8 @@
+{
+    "name": "浏览器屏",
+    "allUsers": false,
+    "icon": "images/icon-256.png",
+    "launchUrl": "/cgi/ThirdParty/com.fnos.kiosk/index.cgi/",
+    "description": "把任意 Web 页面直接显示到 NAS 副屏",
+    "category": "工具"
+}

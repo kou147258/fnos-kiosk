@@ -1,0 +1,47 @@
+{
+  "logo": "/logo.png",
+  "title": {
+    "i18n": {
+      "zh-CN": "浏览器屏 · 设置向导",
+      "en": "Browser Kiosk · Config Wizard"
+    }
+  },
+  "items": [
+    {
+      "type": "select",
+      "field": "wizard_rotate",
+      "label": {
+        "i18n": {"zh-CN": "显示方向", "en": "Display Orientation"}
+      },
+      "options": [
+        {"label": "0°", "value": "0"},
+        {"label": "90°", "value": "90"},
+        {"label": "180°", "value": "180"},
+        {"label": "270°", "value": "270"}
+      ],
+      "default": "0"
+    },
+    {
+      "type": "select",
+      "field": "wizard_rotate_seconds",
+      "label": {
+        "i18n": {"zh-CN": "页面轮换时间", "en": "Rotation Interval"}
+      },
+      "options": [
+        {"label": "10 秒", "value": "10"},
+        {"label": "30 秒", "value": "30"},
+        {"label": "60 秒", "value": "60"},
+        {"label": "2 分钟", "value": "120"}
+      ],
+      "default": "30"
+    },
+    {
+      "type": "checkbox",
+      "field": "wizard_fb_enabled",
+      "label": {
+        "i18n": {"zh-CN": "启用显示器输出", "en": "Enable Display Output"}
+      },
+      "default": true
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "logo": "/logo.png",
+  "title": {
+    "i18n": {
+      "zh-CN": "浏览器屏 · 安装向导",
+      "en": "Browser Kiosk · Setup Wizard"
+    }
+  },
+  "items": [
+    {
+      "type": "select",
+      "field": "wizard_default_mode",
+      "label": {
+        "i18n": {
+          "zh-CN": "默认内容模式",
+          "en": "Default Content Mode"
+        }
+      },
+      "options": [
+        {"label": {"i18n": {"zh-CN": "URL 列表轮换", "en": "URL List Cycling"}}, "value": "cycle"},
+        {"label": {"i18n": {"zh-CN": "单 URL 全屏", "en": "Single URL Kiosk"}}, "value": "single"}
+      ],
+      "default": "cycle"
+    },
+    {
+      "type": "select",
+      "field": "wizard_rotate_seconds",
+      "label": {
+        "i18n": {
+          "zh-CN": "页面轮换时间",
+          "en": "Page Rotation Interval"
+        }
+      },
+      "options": [
+        {"label": "10 秒", "value": "10"},
+        {"label": "30 秒", "value": "30"},
+        {"label": "60 秒", "value": "60"},
+        {"label": "2 分钟", "value": "120"},
+        {"label": "5 分钟", "value": "300"}
+      ],
+      "default": "30"
+    },
+    {
+      "type": "select",
+      "field": "wizard_rotate",
+      "label": {
+        "i18n": {
+          "zh-CN": "显示方向",
+          "en": "Display Orientation"
+        }
+      },
+      "options": [
+        {"label": "0°", "value": "0"},
+        {"label": "90°", "value": "90"},
+        {"label": "180°", "value": "180"},
+        {"label": "270°", "value": "270"}
+      ],
+      "default": "0"
+    },
+    {
+      "type": "checkbox",
+      "field": "wizard_fb_enabled",
+      "label": {
+        "i18n": {
+          "zh-CN": "启用显示器输出（安装后立刻在副屏显示）",
+          "en": "Enable display output (start immediately after install)"
+        }
+      },
+      "default": true
+    }
+  ]
+}

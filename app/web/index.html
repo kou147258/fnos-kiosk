@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fnOS 浏览器屏</title>
+<link rel="icon" href="images/icon-64.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-theme="midnight">
+
+<div id="offline" class="offline hidden">连接中断，正在重试…</div>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="images/icon-64.png" alt="logo" draggable="false">
+    <div class="brand-text">
+      <h1>浏览器屏</h1>
+      <div class="sub"><span id="meta-mode">cycle</span> · <span id="meta-pages">0 个页面</span></div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <span class="clock" id="clock">--:--:--</span>
+    <a id="btn-settings" class="icon-btn" href="settings" target="_blank" title="设置（经飞牛应用门户访问）">⚙</a>
+  </div>
+</header>
+
+<main class="grid">
+
+  <section class="card">
+    <div class="card-head">
+      <h2>显示器</h2>
+      <span class="badge" id="fb-state">—</span>
+    </div>
+    <div class="kv-grid" id="fb-grid"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>页面列表</h2>
+      <span class="badge" id="pages-count">0 个</span>
+    </div>
+    <div id="pages-list" class="page-list"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>本地 HTML 文件</h2>
+      <span class="badge" id="local-count">0 个</span>
+    </div>
+    <div id="local-list" class="page-list small"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>实时画面</h2>
+      <label class="auto-refresh"><input type="checkbox" id="auto-refresh" checked> 3 秒自动刷新</label>
+    </div>
+    <div class="preview-wrap">
+      <img id="fb-preview" alt="显示屏预览">
+      <div id="preview-placeholder" class="preview-placeholder hidden">
+        显示器未启用或不可读。<br>开启「设置 → 显示器」并保存后可预览。
+      </div>
+    </div>
+    <p class="hint center">画面 = 显示器实际渲染（旋转方向已应用）。</p>
+  </section>
+
+</main>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>浏览器屏 · 设置</title>
+<link rel="stylesheet" href="assets/settings.css">
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ============ 左侧：配置区域 ============ -->
+  <aside class="pane-left">
+    <header class="pane-head">
+      <img src="images/icon-64.png" alt="">
+      <div>
+        <h1>浏览器屏 · 设置</h1>
+        <span class="sub">经飞牛应用门户访问的管理页面 · 请以管理员身份使用</span>
+      </div>
+      <div class="head-links">
+        <a class="back" href="./?panel=1" target="_blank" title="在新窗口打开只读面板">本地网络查看</a>
+        <a class="back" href="./?panel=1">← 返回面板</a>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button data-tab="pages" class="active">页面</button>
+      <button data-tab="display">显示</button>
+      <button data-tab="browser">浏览器</button>
+      <button data-tab="advanced">高级</button>
+    </nav>
+
+    <div class="tab-body">
+
+      <!-- ===== 页面 ===== -->
+      <section id="tab-pages" class="tab active">
+        <h3>默认模式</h3>
+        <div class="seg" id="seg-mode">
+          <button data-v="cycle" class="active">URL 列表轮换</button>
+          <button data-v="single">单 URL 全屏</button>
+        </div>
+        <h3>页面列表</h3>
+        <p class="hint">拖动 ⋮⋮ 调整顺序。轮换模式按列表顺序自动翻页；单 URL 模式取第一个 <code>mode=single</code> 的页面。</p>
+        <div id="page-list" class="page-edit-list"></div>
+        <button id="btn-page-add" class="btn-mini">+ 新增页面</button>
+      </section>
+
+      <!-- ===== 显示 ===== -->
+      <section id="tab-display" class="tab">
+        <h3>显示器输出</h3>
+        <div class="toggle-row big"><span>启用显示器显示</span><input type="checkbox" id="set-fb"></div>
+        <div id="fb-info" class="fb-info">读取中…</div>
+        <p class="hint">当前占用端口：HTTP API <code id="port-http">—</code>，Chromium 远程调试 <code id="port-cdp">—</code>。两者均绑定 127.0.0.1（仅本机访问）。如需更换 CDP 端口，在启动 fb_render 前设置环境变量 <code>KIOSK_CDP_PORT=&lt;port&gt;</code>。</p>
+        <h3>显示方向</h3>
+        <div class="seg" id="seg-rotate">
+          <button data-v="0" class="active">0°</button>
+          <button data-v="90">90°</button>
+          <button data-v="180">180°</button>
+          <button data-v="270">270°</button>
+        </div>
+        <h3>屏幕尺寸（英寸）</h3>
+        <label class="field">屏幕尺寸
+          <select id="set-inches">
+            <option value="0">自动（按分辨率缩放）</option>
+            <option value="7">7"</option>
+            <option value="10.1">10.1"</option>
+            <option value="13.3">13.3"</option>
+            <option value="15.6">15.6"</option>
+            <option value="21.5">21.5"</option>
+          </select>
+        </label>
+        <h3>主题与强调色</h3>
+        <label class="field">主题
+          <select id="set-theme">
+            <option value="midnight">午夜蓝</option>
+            <option value="graphite">石墨黑</option>
+            <option value="emerald">翡翠绿</option>
+            <option value="solar">日光橙</option>
+            <option value="sakura">樱粉</option>
+            <option value="light">云白</option>
+          </select>
+        </label>
+        <label class="field">强调色（自定义 #RRGGBB，留空跟随主题）
+          <input type="text" id="set-accent" class="text-input" placeholder="#3b82f6">
+        </label>
+        <h3>页面轮换时间</h3>
+        <label class="field">轮换间隔
+          <select id="set-rotate">
+            <option value="10">10 秒</option>
+            <option value="15">15 秒</option>
+            <option value="30">30 秒</option>
+            <option value="60">60 秒</option>
+            <option value="120">2 分钟</option>
+            <option value="300">5 分钟</option>
+          </select>
+        </label>
+      </section>
+
+      <!-- ===== 浏览器 ===== -->
+      <section id="tab-browser" class="tab">
+        <h3>Chromium 路径</h3>
+        <label class="field">可执行文件路径（留空自动检测）
+          <input type="text" id="set-browser-path" class="text-input" placeholder="/usr/bin/chromium">
+        </label>
+        <p class="hint">自动检测失败时请手动填写。</p>
+        <h3>窗口尺寸</h3>
+        <div class="row-2">
+          <label class="field">宽度
+            <input type="number" id="set-win-w" class="text-input" min="320" max="7680">
+          </label>
+          <label class="field">高度
+            <input type="number" id="set-win-h" class="text-input" min="240" max="4320">
+          </label>
+        </div>
+        <p class="hint">建议填显示器实际分辨率（如 1920×1080、1280×800）；缩放更精确。</p>
+        <h3>设备像素比</h3>
+        <label class="field">Scale
+          <select id="set-browser-scale">
+            <option value="1">1.0（普通）</option>
+            <option value="1.25">1.25</option>
+            <option value="1.5">1.5（HiDPI）</option>
+            <option value="2">2.0（高分屏）</option>
+          </select>
+        </label>
+        <label class="field">导航超时（秒）
+          <input type="number" id="set-browser-timeout" class="text-input" min="5" max="120">
+        </label>
+        <div class="toggle-row"><span>隐藏鼠标光标</span><input type="checkbox" id="set-hide-cursor"></div>
+
+        <h3>🔐 登录态管理</h3>
+        <p class="hint">Cookies / localStorage / 密码 自动保存到 <code id="profile-path-show">—</code>。重启 FPK / Chromium 后自动恢复登录态。</p>
+        <div class="row-2">
+          <button id="btn-login-help" class="btn-mini">📖 如何首次登录？</button>
+          <button id="btn-auth-reset" class="btn-mini danger">🗑 清空登录态（强制重登）</button>
+        </div>
+        <p class="hint" id="auth-state">…</p>
+        <div id="login-help" class="hidden" style="background:rgba(0,0,0,.2);border:1px solid var(--card-brd);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-top:8px">
+          <strong>首次登录流程（三种方式任选其一）：</strong><br><br>
+          <strong>A. 远程调试连接（推荐）</strong><br>
+          1. 在 PC 浏览器打开 <code>chrome://inspect/#devices</code><br>
+          2. 勾选「Discover network targets」→ 「Configure」→ 加 <code>localhost:9223</code><br>
+          3. 用 SSH 隧道把 NAS 的 9223 转到你 PC：<br>
+             <code>ssh -L 9223:127.0.0.1:9223 user@nas-ip</code><br>
+          4. <code>chrome://inspect</code> 里会出现 kiosk 的 headless Chromium，点击「inspect」→ 在 DevTools 里手动登录<br>
+          5. 登录完成即可关闭 DevTools，kiosk 自动接管<br><br>
+          <strong>B. SSH + 非 headless 登录</strong><br>
+          1. SSH 进 NAS<br>
+          2. 停掉 kiosk 的 fb_render（避免锁）：<code>/var/apps/com.fnos.kiosk/cmd/main stop</code><br>
+          3. 用同一个 profile 启 Chromium（假设 DISPLAY 已就绪）：<br>
+             <code>chromium --user-data-dir=/var/apps/com.fnos.kiosk/var/chromium-profile --no-sandbox <URL></code><br>
+          4. 登录完成后关 Chromium，重新启 fb_render：<br>
+             <code>/var/apps/com.fnos.kiosk/cmd/main start</code><br><br>
+          <strong>C. SSH + Xvfb 无显示登录</strong>（需要 Xvfb + xdotool）<br>
+          <code>xvfb-run -a chromium --user-data-dir=/var/apps/com.fnos.kiosk/var/chromium-profile --no-sandbox <URL></code><br>
+          Chromium 会跑在虚拟显示里，登录态照旧写盘。复杂 2FA 不推荐。
+        </div>
+      </section>
+
+      <!-- ===== 高级 ===== -->
+      <section id="tab-advanced" class="tab">
+        <h3>本地上传（图片 / 视频 / HTML）</h3>
+        <p class="hint">存放在 var/pages/。上传后可在「页面」tab 引用——选「类型」为「本地 HTML」或「媒体文件」即可。</p>
+        <div class="row-2">
+          <label class="field">从电脑选择文件
+            <input type="file" id="local-file" class="text-input" accept="image/*,video/*,.html,.htm,.svg">
+          </label>
+          <label class="field">文件名（留空自动用原文件名）
+            <input type="text" id="local-upload-name" class="text-input" placeholder="my.jpg">
+          </label>
+        </div>
+        <div class="row-2">
+          <button id="btn-local-upload" class="btn-mini">⬆ 上传到 NAS</button>
+          <span id="upload-state" class="hint"></span>
+        </div>
+
+        <h3>文件管理</h3>
+        <div id="local-edit-list" class="page-edit-list small"></div>
+        <div class="row-2">
+          <label class="field">文件名
+            <input type="text" id="local-name" class="text-input" placeholder="my.html">
+          </label>
+          <label class="field">&nbsp;
+            <button id="btn-local-new" class="btn-mini">+ 新建</button>
+            <button id="btn-local-delete" class="btn-mini danger">删除选中</button>
+          </label>
+        </div>
+        <label class="field">内容（HTML / SVG）
+          <textarea id="local-content" class="text-input code" rows="10" placeholder="<html>...</html>"></textarea>
+        </label>
+        <button id="btn-local-save" class="btn-mini">保存文件</button>
+
+        <h3>SSRF 防护</h3>
+        <div class="toggle-row"><span>允许内网主机（192.168 / 10.x / 127.x / localhost）</span>
+          <input type="checkbox" id="set-allow-private">
+        </div>
+        <p class="hint">默认禁用。开启后允许把 NAS 内网服务（如 Home Assistant 192.168.x.x）作为页面 URL。</p>
+      </section>
+
+    </div>
+
+    <footer class="pane-foot">
+      <span id="save-state"></span>
+      <button id="btn-save" class="btn-save">保存并同步到显示屏</button>
+    </footer>
+  </aside>
+
+  <!-- ============ 右侧：效果预览 ============ -->
+  <main class="pane-right">
+    <div class="preview-head">
+      <h2>显示屏实时预览</h2>
+      <label><input type="checkbox" id="preview-auto" checked> 自动刷新（3s）</label>
+      <button id="preview-refresh" class="btn-mini">立即刷新</button>
+    </div>
+    <div class="preview-stage" id="preview-stage">
+      <img id="fb-preview" alt="显示屏预览">
+      <div id="preview-placeholder" class="preview-placeholder hidden">
+        显示器未启用或不可读。<br>开启「设置 → 显示 → 启用显示器显示」并保存后可预览。
+      </div>
+    </div>
+    <p class="hint center">预览内容 = 显示器实际画面（含旋转方向）。保存后约 2 秒内生效。</p>
+  </main>
+
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="assets/settings.js"></script>
+</body>
+</html>

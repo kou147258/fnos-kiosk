@@ -1,0 +1,8 @@
+{
+    "defaults": {
+        "run-as": "package"
+    },
+    "username": "fnoskiosk",
+    "groupname": "fnoskiosk",
+    "join-groups": ["video"]
+}

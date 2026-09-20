@@ -1,0 +1,4 @@
+#!/bin/bash
+# 配置向导入口（fnOS 在切换前调用，返回 JSON 标识是重新配置）
+echo '{"reconfigurable":true}'
+exit 0

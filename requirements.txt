@@ -1,0 +1,13 @@
+# fnos-kiosk 运行依赖
+#
+# 设计目标：尽可能零第三方 Python 依赖（沿用 fnos-dashboard 哲学）。
+#
+# 运行时：
+#   - Python 3.11+（fnOS 提供 python312 运行时）
+#   - Pillow：用于截屏 PNG 解码与缩放。fnOS 配套安装 python3-pil。
+#
+# 外部工具（apt）：
+#   - chromium / chromium-browser（渲染引擎，约 150MB）
+#   - python3-pil（图像处理）
+
+# 全部第三方 Python 依赖——目前为空

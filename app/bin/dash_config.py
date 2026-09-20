@@ -1,0 +1,336 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""fnOS 浏览器屏 —— 配置层（etc/config.json 读写与白名单校验）。
+
+数据模型：
+  - 默认模式：cycle（多页轮换）/ single（单 URL 独占全屏）
+  - pages[]：每个元素是一个 {id, name, type, url|path, mode, refresh_seconds, zoom, enabled}
+  - fb_*：显示器参数（与 fnos-dashboard 同语义）
+
+所有用户输入必须过 _sanitize：URL 走白名单（默认仅 http/https），
+host 走正则防 SSRF，id 限定 [a-z0-9_-]。
+"""
+
+import json
+import os
+import re
+import threading
+
+APP_VERSION = "0.1.0"
+THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
+_ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
+_URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
+_HOST_RE = re.compile(r"^[a-z0-9.-]{3,100}$", re.IGNORECASE)
+_PATH_RE = re.compile(r"^[A-Za-z0-9_./-]{1,256}$")
+# 浏览器可能访问的目标 host 黑名单（防 SSRF）：仅 RFC1918 / loopback 默认被禁，
+# 需要时通过 allow_private_hosts 放行
+def _extract_host(url):
+    """从 http(s) URL 抽出 host（去掉 scheme、路径、端口）。失败返回 ''。"""
+    if not isinstance(url, str):
+        return ""
+    u = url.strip()
+    for sch in ("http://", "https://", "HTTP://", "HTTPS://"):
+        if u.startswith(sch):
+            u = u[len(sch):]
+            break
+    else:
+        return ""
+    # 取到第一个 / : ? #
+    for sep in ("/", ":", "?", "#"):
+        if sep in u:
+            u = u.split(sep, 1)[0]
+    return u.lower()
+
+
+def _is_private_host(host):
+    """RFC1918 / loopback 判定（数值匹配，避免依赖 host 字符串前缀正则误判）。"""
+    if not host:
+        return False
+    if host == "localhost" or host == "0.0.0.0" or host == "::" or host == "::1":
+        return True
+    # IPv6 [::1] / [::]
+    if host.startswith("[") and host.endswith("]"):
+        inner = host[1:-1].lower()
+        return inner in ("::1", "::", "0:0:0:0:0:0:0:1", "0:0:0:0:0:0:0:0")
+    # IPv4
+    parts = host.split(".")
+    if len(parts) == 4:
+        try:
+            nums = [int(p) for p in parts]
+            if all(0 <= n <= 255 for n in nums):
+                a, b = nums[0], nums[1]
+                if a == 10:
+                    return True
+                if a == 127:
+                    return True
+                if a == 172 and 16 <= b <= 31:
+                    return True
+                if a == 192 and b == 168:
+                    return True
+                if a == 169 and b == 254:
+                    return True
+                if a == 0:
+                    return True
+                if a >= 224:  # multicast / reserved
+                    return True
+        except ValueError:
+            pass
+    return False
+
+DEFAULT_PAGE = {
+    "id": "",
+    "name": "",
+    "type": "url",            # url | html_file | media_file
+    "url": "",
+    "path": "",
+    "mode": "cycle",           # cycle | single
+    "refresh_seconds": 0,     # 0=不自动刷新；>0 按秒重新加载
+    "zoom": 1.0,              # 0.5–2.0
+    "enabled": True,
+}
+
+DEFAULT_CONFIG = {
+    "theme": "midnight",
+    "accent": "",
+    "default_mode": "cycle",   # 缺省页面模式（单 URL 兜底用）
+    "rotate_seconds": 30,
+    "fb_enabled": False,
+    "fb_rotate": 0,
+    "screen_inches": 0,
+    "browser_path": "",        # 自定义 chromium 路径（空则自动找）
+    "browser_window": [1920, 1080],   # 浏览器视口尺寸（与 fb 实际分辨率尽量匹配，缩放精度更好）
+    "browser_scale": 1.0,      # 设备像素比（HiDPI 屏可调 1.5/2.0 让字体更清晰）
+    "browser_timeout": 30,     # Page.navigate 超时秒
+    "chromium_profile_dir": "", # 自定义 profile 路径（留空 = var/chromium-profile，自动持久化）
+    "allow_private_hosts": False,    # 显式开启后才允许 192.168 / localhost
+    "hide_cursor": True,
+    "pages": [],
+}
+
+
+def _writable_dir(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        return os.access(path, os.W_OK)
+    except OSError:
+        return False
+
+
+def _clip_str(v, n):
+    return str(v or "")[:n]
+
+
+def _clip_float(v, lo, hi, default):
+    try:
+        return min(hi, max(lo, float(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _clip_int(v, lo, hi, default):
+    try:
+        return min(hi, max(lo, int(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _bool(v, default=False):
+    return bool(v) if isinstance(v, bool) else default
+
+
+def _sanitize_page(raw, allow_private):
+    p = dict(DEFAULT_PAGE)
+    if not isinstance(raw, dict):
+        return None
+    pid = _clip_str(raw.get("id"), 32)
+    if not _ID_RE.fullmatch(pid):
+        return None
+    p["id"] = pid
+    p["name"] = _clip_str(raw.get("name"), 48) or pid
+    ptype = raw.get("type")
+    if ptype in ("url", "html_file", "media_file"):
+        p["type"] = ptype
+    else:
+        p["type"] = "url"
+    if p["type"] == "url":
+        url = _clip_str(raw.get("url"), 2048)
+        if not _URL_RE.match(url):
+            return None
+        if not allow_private and _is_private_host(_extract_host(url)):
+            return None
+        p["url"] = url
+        p["path"] = ""
+    else:
+        path = _clip_str(raw.get("path"), 256)
+        if not _PATH_RE.match(path):
+            return None
+        # html_file / media_file 类型 path 必须是相对路径（不含 ..）
+        if ".." in path.split("/"):
+            return None
+        p["url"] = ""
+        p["path"] = path
+    p["mode"] = raw.get("mode") if raw.get("mode") in ("cycle", "single") else "cycle"
+    p["refresh_seconds"] = _clip_int(raw.get("refresh_seconds"), 0, 86400, 0)
+    p["zoom"] = _clip_float(raw.get("zoom"), 0.3, 3.0, 1.0)
+    p["enabled"] = _bool(raw.get("enabled"), True)
+    return p
+
+
+class Config:
+    def __init__(self, etc_path, var_dir):
+        self.var_dir = var_dir
+        self.path = etc_path if _writable_dir(os.path.dirname(etc_path)) \
+            else os.path.join(var_dir, "config.json")
+        self._lock = threading.Lock()
+        self._data = self._load()
+
+    def _load(self):
+        candidates = [self.path]
+        var_override = os.path.normpath(os.path.join(self.var_dir, "config.json"))
+        if var_override != self.path and os.path.isfile(var_override):
+            candidates.append(var_override)
+        return self._merge_files(candidates)
+
+    def _merge_files(self, paths):
+        data = json.loads(json.dumps(DEFAULT_CONFIG))
+        for p in paths:
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    patch = json.load(f)
+                if isinstance(patch, dict):
+                    data.update(patch)
+            except (OSError, ValueError):
+                continue
+        return self._sanitize(data)
+
+    def _sanitize(self, data):
+        out = dict(DEFAULT_CONFIG)
+        out.update(data)
+        # 主题 / 强调色
+        if out.get("theme") not in THEMES:
+            out["theme"] = DEFAULT_CONFIG["theme"]
+        accent = out.get("accent") or ""
+        if not isinstance(accent, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", accent):
+            accent = ""
+        out["accent"] = accent.lower()
+        # 模式
+        out["default_mode"] = out.get("default_mode") if out.get("default_mode") in ("cycle", "single") else "cycle"
+        # 数值类
+        out["rotate_seconds"] = _clip_int(out.get("rotate_seconds"), 5, 300, 30)
+        out["fb_rotate"] = out.get("fb_rotate") if out.get("fb_rotate") in (0, 90, 180, 270) else 0
+        out["screen_inches"] = _clip_float(out.get("screen_inches"), 0.0, 200.0, 0.0)
+        out["browser_timeout"] = _clip_int(out.get("browser_timeout"), 5, 120, 30)
+        out["browser_scale"] = _clip_float(out.get("browser_scale"), 0.5, 3.0, 1.0)
+        # 视口
+        win = out.get("browser_window") or [1920, 1080]
+        if not (isinstance(win, list) and len(win) == 2):
+            win = [1920, 1080]
+        out["browser_window"] = [_clip_int(win[0], 320, 7680, 1920),
+                                  _clip_int(win[1], 240, 4320, 320)]
+        out["browser_path"] = _clip_str(out.get("browser_path"), 256)
+        profile = _clip_str(out.get("chromium_profile_dir"), 256)
+        # profile_dir 只接受绝对路径且不能含 ..（防路径穿越）
+        if profile and (not profile.startswith("/") or ".." in profile.split("/")):
+            profile = ""
+        out["chromium_profile_dir"] = profile
+        out["fb_enabled"] = bool(out.get("fb_enabled"))
+        out["hide_cursor"] = bool(out.get("hide_cursor"))
+        out["allow_private_hosts"] = bool(out.get("allow_private_hosts"))
+        # 页面列表：去重 id + 白名单
+        pages = out.get("pages") or []
+        seen = set()
+        clean = []
+        for raw in pages if isinstance(pages, list) else []:
+            p = _sanitize_page(raw, out["allow_private_hosts"])
+            if p is None or p["id"] in seen:
+                continue
+            seen.add(p["id"])
+            clean.append(p)
+        out["pages"] = clean
+        return out
+
+    def get(self):
+        with self._lock:
+            return json.loads(json.dumps(self._data))
+
+    def update(self, patch):
+        """校验并合并补丁，原子写盘。返回 (ok, error)。"""
+        clean = {}
+        # 主题 / 强调色
+        if "theme" in patch:
+            if patch["theme"] not in THEMES:
+                return False, "不支持的主题：%r" % (patch["theme"],)
+            clean["theme"] = patch["theme"]
+        if "accent" in patch:
+            a = patch["accent"] or ""
+            if not isinstance(a, str) or (a != "" and not re.fullmatch(r"#[0-9a-fA-F]{6}", a)):
+                return False, "强调色格式无效"
+            clean["accent"] = a.lower()
+        if "default_mode" in patch:
+            if patch["default_mode"] not in ("cycle", "single"):
+                return False, "默认模式仅支持 cycle / single"
+            clean["default_mode"] = patch["default_mode"]
+        if "rotate_seconds" in patch:
+            clean["rotate_seconds"] = _clip_int(patch["rotate_seconds"], 5, 300, 30)
+        if "screen_inches" in patch:
+            clean["screen_inches"] = _clip_float(patch["screen_inches"], 0.0, 200.0, 0.0)
+        if "fb_rotate" in patch:
+            try:
+                rotate = int(patch["fb_rotate"])
+            except (TypeError, ValueError):
+                return False, "显示方向无效"
+            if rotate not in (0, 90, 180, 270):
+                return False, "显示方向仅支持 0/90/180/270"
+            clean["fb_rotate"] = rotate
+        if "fb_enabled" in patch:
+            clean["fb_enabled"] = bool(patch["fb_enabled"])
+        if "hide_cursor" in patch:
+            clean["hide_cursor"] = bool(patch["hide_cursor"])
+        if "allow_private_hosts" in patch:
+            clean["allow_private_hosts"] = bool(patch["allow_private_hosts"])
+        if "browser_path" in patch:
+            clean["browser_path"] = _clip_str(patch["browser_path"], 256)
+        if "chromium_profile_dir" in patch:
+            pd = _clip_str(patch["chromium_profile_dir"], 256)
+            if pd and (not pd.startswith("/") or ".." in pd.split("/")):
+                return False, "chromium_profile_dir 必须是绝对路径且不含 '..'"
+            clean["chromium_profile_dir"] = pd
+        if "browser_timeout" in patch:
+            clean["browser_timeout"] = _clip_int(patch["browser_timeout"], 5, 120, 30)
+        if "browser_scale" in patch:
+            clean["browser_scale"] = _clip_float(patch["browser_scale"], 0.5, 3.0, 1.0)
+        if "browser_window" in patch:
+            w = patch["browser_window"]
+            if not (isinstance(w, list) and len(w) == 2):
+                return False, "browser_window 必须是 [W, H] 数组"
+            clean["browser_window"] = [_clip_int(w[0], 320, 7680, 1920),
+                                       _clip_int(w[1], 240, 4320, 320)]
+        if "pages" in patch:
+            pages = patch["pages"]
+            if not isinstance(pages, list):
+                return False, "页面列表必须是数组"
+            allow_private = bool(clean.get("allow_private_hosts",
+                                          self._data.get("allow_private_hosts")))
+            seen = set()
+            clean_pages = []
+            for raw in pages:
+                p = _sanitize_page(raw, allow_private)
+                if p is None or p["id"] in seen:
+                    continue
+                seen.add(p["id"])
+                clean_pages.append(p)
+            clean["pages"] = clean_pages
+
+        with self._lock:
+            data = dict(self._data)
+            data.update(clean)
+            data = self._sanitize(data)
+            tmp = self.path + ".tmp"
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(tmp, self.path)
+            except OSError as e:
+                return False, "配置写入失败：%s" % e
+            self._data = data
+        return True, ""

@@ -1,0 +1,8 @@
+#!/bin/bash
+# 升级：保留用户 etc/var 配置；不重写 udev 规则（保留现有权限）
+APP_NAME="${TRIM_APPNAME:-com.fnos.kiosk}"
+ETC_DIR="${TRIM_PKGETC:-/var/apps/${APP_NAME}}"
+VAR_DIR="${TRIM_PKGVAR:-/var/apps/${APP_NAME}/var}"
+# 仅确保目录存在；具体配置由 install_callback 的语义兜底
+mkdir -p "$ETC_DIR" "$VAR_DIR"
+exit 0

@@ -1,0 +1,9 @@
+{
+    "apt": {
+        "depends": ["chromium", "python3-pil"],
+        "optional": ["x11-utils"],
+        "notes": "chromium 为渲染引擎（~150MB）；python3-pil 用于截屏解码与缩放；x11-utils 仅在本地调试用（xwd）。"
+    },
+    "min_memory_mb": 512,
+    "min_disk_mb": 200
+}

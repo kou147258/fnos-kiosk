@@ -1,0 +1,44 @@
+#!/bin/bash
+# 配置向导回调：根据用户选择应用运行时参数
+APP_NAME="${TRIM_APPNAME:-com.fnos.kiosk}"
+ETC_DIR="${TRIM_PKGETC:-/var/apps/${APP_NAME}}"
+CFG_FILE="${ETC_DIR}/config.json"
+
+ROTATE="${wizard_rotate:-0}"
+ROTATE_SEC="${wizard_rotate_seconds:-30}"
+FB="${wizard_fb_enabled:-true}"
+
+if ! command -v python3 >/dev/null 2>&1 && [ -d /var/apps/python312/target/bin ]; then
+    export PATH="/var/apps/python312/target/bin:$PATH"
+fi
+
+python3 - "$CFG_FILE" "$ROTATE" "$ROTATE_SEC" "$FB" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+try:
+    rotate = int(sys.argv[2])
+    rotate_sec = min(300, max(5, int(sys.argv[3])))
+    fb = sys.argv[4] == "true"
+except ValueError:
+    raise SystemExit(0)
+
+if rotate not in (0, 90, 180, 270):
+    rotate = 0
+
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+cfg["fb_rotate"] = rotate
+cfg["rotate_seconds"] = rotate_sec
+cfg["fb_enabled"] = fb
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+PY
+exit 0

@@ -1,0 +1,33 @@
+# fnos-kiosk 项目忽略
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+
+# 编辑器 / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 构建产物（生成图标后会被纳入 FPK，但本地仓库不需要追踪）
+app/ui/images/icon-64.png
+app/ui/images/icon-256.png
+app/web/images/icon-64.png
+app/web/images/icon-256.png
+
+# fnpack 输出
+*.fpk
+
+# 本地预览临时
+.local/
+.env
+
+# 私钥 / 配置（若开发中本地放了的）
+etc/dev-*.json

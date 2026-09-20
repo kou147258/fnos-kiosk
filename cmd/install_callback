@@ -1,0 +1,101 @@
+#!/bin/bash
+# 安装后：根据安装向导生成默认显示配置 + 写 udev 规则
+APP_NAME="${TRIM_APPNAME:-com.fnos.kiosk}"
+ETC_DIR="${TRIM_PKGETC:-/var/apps/${APP_NAME}}"
+VAR_DIR="${TRIM_PKGVAR:-/var/apps/${APP_NAME}/var}"
+CFG_FILE="${ETC_DIR}/config.json"
+MODE="${wizard_default_mode:-cycle}"
+ROTATE="${wizard_rotate:-0}"
+ROTATE_SEC="${wizard_rotate_seconds:-30}"
+FB="${wizard_fb_enabled:-true}"
+
+if ! command -v python3 >/dev/null 2>&1 && [ -d /var/apps/python312/target/bin ]; then
+    export PATH="/var/apps/python312/target/bin:$PATH"
+fi
+
+mkdir -p "$ETC_DIR" "$VAR_DIR"
+
+python3 - "$CFG_FILE" "$MODE" "$ROTATE" "$ROTATE_SEC" "$FB" <<'PY'
+import json, os, sys
+
+path = sys.argv[1]
+mode = sys.argv[2] if sys.argv[2] in ("cycle", "single") else "cycle"
+try:
+    rotate = int(sys.argv[3])
+except ValueError:
+    rotate = 0
+try:
+    rotate_sec = min(300, max(5, int(sys.argv[4])))
+except ValueError:
+    rotate_sec = 30
+fb = sys.argv[5] == "true"
+if rotate not in (0, 90, 180, 270):
+    rotate = 0
+
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+
+cfg["default_mode"] = mode
+cfg["fb_rotate"] = rotate
+cfg["rotate_seconds"] = rotate_sec
+cfg["fb_enabled"] = fb
+cfg.setdefault("theme", "midnight")
+cfg.setdefault("accent", "")
+cfg.setdefault("screen_inches", 0)
+# 首次安装给一条示例 URL（维基百科首页），便于开箱即用
+cfg.setdefault("pages", [
+    {
+        "id": "example",
+        "name": "示例页面",
+        "type": "url",
+        "url": "https://en.wikipedia.org/wiki/Main_Page",
+        "mode": "cycle",
+        "refresh_seconds": 0,
+        "zoom": 1.0,
+        "enabled": True,
+    }
+])
+
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+PY
+rc=$?
+
+if [ "$rc" -ne 0 ]; then
+    echo "写入默认配置失败（${CFG_FILE}）" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# 确保应用用户可写配置（安装阶段可能以 root 执行）
+if [ "$(id -u)" = "0" ] && [ -n "${TRIM_USERNAME}" ]; then
+    chown -R "${TRIM_USERNAME}:${TRIM_GROUPNAME:-${TRIM_USERNAME}}" "$ETC_DIR" 2>/dev/null
+fi
+
+# 显示器模式：udev 规则允许应用用户（video 组）写 framebuffer，权限收敛为 0660
+if [ "$(id -u)" = "0" ] && [ -e /dev/fb0 ]; then
+    RULE="/etc/udev/rules.d/99-fnos-kiosk-fb.rules"
+    echo 'SUBSYSTEM=="graphics", KERNEL=="fb*", GROUP="video", MODE="0660"' \
+        > "$RULE" 2>/dev/null || true
+    udevadm control --reload-rules 2>/dev/null || true
+    chgrp video /dev/fb0 2>/dev/null || true
+    chmod 660 /dev/fb0 2>/dev/null || true
+fi
+
+# Chromium 检查：缺失时给明显提示，但不阻塞安装（FPK 仍可上线，由设置页引导安装）
+if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
+    echo "提示：本机未检测到 chromium/chromium-browser。请在 fnOS 控制台执行 'apt install -y chromium' 后重启本应用。" \
+        > "${TRIM_TEMP_LOGFILE}" || true
+fi
+
+# PIL 检查
+if ! python3 -c "import PIL" >/dev/null 2>&1; then
+    echo "提示：未安装 python3-PIL，无法解码截图（请执行 apt install -y python3-pil）。" \
+        > "${TRIM_TEMP_LOGFILE}" || true
+fi
+
+exit 0

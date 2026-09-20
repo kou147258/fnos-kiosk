@@ -1,0 +1,27 @@
+#!/bin/bash
+# 卸载：清 udev 规则、恢复 fb0 权限
+APP_NAME="${TRIM_APPNAME:-com.fnos.kiosk}"
+ETC_DIR="${TRIM_PKGETC:-/var/apps/${APP_NAME}}"
+VAR_DIR="${TRIM_PKGVAR:-/var/apps/${APP_NAME}/var}"
+
+# 兜底：删 udev 规则（即便 udev 已被替换或不存在也不报错）
+rm -f /etc/udev/rules.d/99-fnos-kiosk-fb.rules 2>/dev/null || true
+udevadm control --reload-rules 2>/dev/null || true
+
+# 兜底：恢复 fb0 为系统默认权限（root 才能改）
+if [ "$(id -u)" = "0" ] && [ -e /dev/fb0 ]; then
+    chmod 600 /dev/fb0 2>/dev/null || true
+fi
+
+# 兜底：尝试杀可能残留的 fb 渲染进程（不只是 pid 文件——pid 可能过期）
+if [ -d /proc ]; then
+    for p in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+        if [ -r "/proc/$p/cmdline" ]; then
+            if grep -aq 'fb_render.py' "/proc/$p/cmdline" 2>/dev/null; then
+                kill -TERM "$p" 2>/dev/null || true
+            fi
+        fi
+    done
+fi
+
+exit 0

@@ -1,0 +1,505 @@
+/* fnOS 浏览器屏 —— 设置页逻辑 */
+"use strict";
+
+var THEMES = [
+  { id: "midnight", name: "午夜蓝" },
+  { id: "graphite", name: "石墨黑" },
+  { id: "emerald", name: "翡翠绿" },
+  { id: "solar", name: "日光橙" },
+  { id: "sakura", name: "樱粉" },
+  { id: "light", name: "云白" },
+];
+
+var cfg = null;        // 当前配置（可编辑副本）
+var localFiles = [];   // var/pages/ 文件列表
+
+function api(method, url, body, raw) {
+  var opts = { method: method };
+  if (body !== undefined) {
+    if (raw) opts.body = body;
+    else { opts.headers = { "Content-Type": "application/json" }; opts.body = JSON.stringify(body); }
+  }
+  return fetch(url, opts).then(function (r) {
+    return r.json().catch(function () { throw new Error("HTTP " + r.status); })
+      .then(function (j) {
+        if (!r.ok || j.ok === false) throw new Error(j.error || ("HTTP " + r.status));
+        return j;
+      });
+  });
+}
+
+function toast(msg, isError) {
+  var el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden", "error");
+  if (isError) el.classList.add("error");
+  clearTimeout(el._t);
+  el._t = setTimeout(function () { el.classList.add("hidden"); }, 3000);
+}
+
+// ---------- Tabs ----------
+document.getElementById("tabs").addEventListener("click", function (e) {
+  var btn = e.target.closest("button[data-tab]");
+  if (!btn) return;
+  document.querySelectorAll("#tabs button").forEach(function (b) { b.classList.remove("active"); });
+  btn.classList.add("active");
+  document.querySelectorAll(".tab").forEach(function (s) { s.classList.remove("active"); });
+  document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+});
+
+// ---------- 页面编辑器 ----------
+function newPage() {
+  return {
+    id: "page" + Date.now().toString(36).slice(-4),
+    name: "新页面",
+    type: "url",
+    url: "https://example.com",
+    path: "",
+    mode: "cycle",
+    refresh_seconds: 0,
+    zoom: 1.0,
+    enabled: true,
+  };
+}
+
+function renderPageList() {
+  var list = document.getElementById("page-list");
+  list.textContent = "";
+  cfg.pages.forEach(function (p, idx) {
+    var div = document.createElement("div");
+    div.className = "page-edit";
+
+    // 名字 + ID
+    var row1 = document.createElement("div");
+    row1.className = "row full";
+    var lab1 = document.createElement("span"); lab1.className = "label-mini"; lab1.textContent = "名称";
+    var in1 = document.createElement("input"); in1.type = "text"; in1.value = p.name || "";
+    in1.addEventListener("input", function () { p.name = in1.value; });
+    row1.appendChild(lab1); row1.appendChild(in1);
+    div.appendChild(row1);
+
+    // 类型
+    var row2 = document.createElement("div");
+    row2.className = "row";
+    var lab2 = document.createElement("span"); lab2.className = "label-mini"; lab2.textContent = "类型";
+    var sel = document.createElement("select");
+    [["url", "远程 URL"], ["html_file", "本地 HTML"], ["media_file", "媒体文件（图片/视频）"]].forEach(function (o) {
+      var op = document.createElement("option");
+      op.value = o[0]; op.textContent = o[1];
+      if (p.type === o[0]) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.style.cssText = "background:rgba(0,0,0,.3);color:var(--text);border:1px solid var(--card-brd);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;flex:1";
+    sel.addEventListener("change", function () {
+      p.type = sel.value;
+      renderPageList();
+    });
+    row2.appendChild(lab2); row2.appendChild(sel);
+    div.appendChild(row2);
+
+    // 模式
+    var row3 = document.createElement("div");
+    row3.className = "row";
+    var lab3 = document.createElement("span"); lab3.className = "label-mini"; lab3.textContent = "模式";
+    var seg = document.createElement("div"); seg.className = "seg";
+    ["cycle", "single"].forEach(function (m) {
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = m === "cycle" ? "轮换" : "全屏";
+      if (p.mode === m) b.classList.add("active");
+      b.addEventListener("click", function () {
+        p.mode = m; renderPageList();
+      });
+      seg.appendChild(b);
+    });
+    row3.appendChild(lab3); row3.appendChild(seg);
+    div.appendChild(row3);
+
+    // URL / path（按 type 切换）
+    var rowUrl = document.createElement("div");
+    rowUrl.className = "row full";
+    if (p.type === "url") {
+      var labU = document.createElement("span"); labU.className = "label-mini"; labU.textContent = "URL";
+      var inU = document.createElement("input"); inU.type = "text"; inU.placeholder = "https://...";
+      inU.value = p.url || "";
+      inU.addEventListener("input", function () { p.url = inU.value; });
+      rowUrl.appendChild(labU); rowUrl.appendChild(inU);
+    } else {
+      var labP = document.createElement("span"); labP.className = "label-mini"; labP.textContent = "文件";
+      var sel2 = document.createElement("select");
+      sel2.style.cssText = "background:rgba(0,0,0,.3);color:var(--text);border:1px solid var(--card-brd);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;flex:1";
+      if (!localFiles.length) {
+        var op = document.createElement("option"); op.value = ""; op.textContent = "（请先在「高级」里创建文件）"; sel2.appendChild(op);
+      }
+      localFiles.forEach(function (f) {
+        var op = document.createElement("option"); op.value = f.name; op.textContent = f.name;
+        if (p.path === f.name) op.selected = true;
+        sel2.appendChild(op);
+      });
+      if (p.path) sel2.value = p.path;
+      sel2.addEventListener("change", function () { p.path = sel2.value; });
+      rowUrl.appendChild(labP); rowUrl.appendChild(sel2);
+    }
+    div.appendChild(rowUrl);
+
+    // 刷新间隔 + zoom
+    var row4 = document.createElement("div");
+    row4.className = "row";
+    var labR = document.createElement("span"); labR.className = "label-mini"; labR.textContent = "刷新(秒)";
+    var inR = document.createElement("input"); inR.type = "number"; inR.min = 0; inR.max = 86400;
+    inR.value = p.refresh_seconds || 0;
+    inR.addEventListener("input", function () {
+      p.refresh_seconds = parseInt(inR.value, 10) || 0;
+    });
+    row4.appendChild(labR); row4.appendChild(inR);
+    div.appendChild(row4);
+
+    var row5 = document.createElement("div");
+    row5.className = "row";
+    var labZ = document.createElement("span"); labZ.className = "label-mini"; labZ.textContent = "缩放";
+    var inZ = document.createElement("input"); inZ.type = "number"; inZ.min = 0.3; inZ.max = 3; inZ.step = 0.1;
+    inZ.value = p.zoom || 1.0;
+    inZ.addEventListener("input", function () {
+      p.zoom = parseFloat(inZ.value) || 1.0;
+    });
+    row5.appendChild(labZ); row5.appendChild(inZ);
+    div.appendChild(row5);
+
+    // 启用 + 删除 + 上移/下移
+    var acts = document.createElement("div");
+    acts.className = "actions";
+    var lbl = document.createElement("label");
+    lbl.style.cssText = "display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);flex:1";
+    var cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = p.enabled !== false;
+    cb.addEventListener("change", function () { p.enabled = cb.checked; });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode("启用"));
+    acts.appendChild(lbl);
+    function btn(label, fn, danger) {
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = label;
+      b.className = "btn-mini" + (danger ? " danger" : "");
+      b.addEventListener("click", fn);
+      return b;
+    }
+    acts.appendChild(btn("↑ 上移", function () {
+      if (idx > 0) {
+        var t = cfg.pages[idx - 1];
+        cfg.pages[idx - 1] = cfg.pages[idx];
+        cfg.pages[idx] = t;
+        renderPageList();
+      }
+    }));
+    acts.appendChild(btn("↓ 下移", function () {
+      if (idx < cfg.pages.length - 1) {
+        var t = cfg.pages[idx + 1];
+        cfg.pages[idx + 1] = cfg.pages[idx];
+        cfg.pages[idx] = t;
+        renderPageList();
+      }
+    }));
+    acts.appendChild(btn("删除", function () {
+      cfg.pages.splice(idx, 1); renderPageList();
+    }, true));
+    div.appendChild(acts);
+
+    list.appendChild(div);
+  });
+}
+
+document.getElementById("btn-page-add").addEventListener("click", function () {
+  cfg.pages.push(newPage());
+  renderPageList();
+});
+
+// ---------- 默认模式 ----------
+document.getElementById("seg-mode").addEventListener("click", function (e) {
+  var b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#seg-mode button").forEach(function (x) { x.classList.remove("active"); });
+  b.classList.add("active");
+  cfg.default_mode = b.dataset.v;
+});
+
+// ---------- 显示 ----------
+document.getElementById("seg-rotate").addEventListener("click", function (e) {
+  var b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#seg-rotate button").forEach(function (x) { x.classList.remove("active"); });
+  b.classList.add("active");
+  cfg.fb_rotate = parseInt(b.dataset.v, 10);
+});
+
+function renderAuthInfo(info) {
+  // 在「浏览器」tab 顶部展示登录态信息
+  var stateEl = document.getElementById("auth-state");
+  var pathEl = document.getElementById("profile-path-show");
+  if (pathEl && info && info.profile_dir) pathEl.textContent = info.profile_dir;
+  if (stateEl) {
+    if (info && info.profile_exists) {
+      stateEl.innerHTML = '<span style="color:var(--ok)">✓ Profile 已就绪</span> —— 浏览器登录态会自动持久化。';
+    } else {
+      stateEl.innerHTML = '<span style="color:var(--dim)">⌛ Profile 未创建</span> —— 首次导航时自动生成。';
+    }
+  }
+}
+
+document.getElementById("btn-auth-reset").addEventListener("click", function () {
+  if (!confirm("确认清空所有登录态？包括 cookies / localStorage / 已存密码。\n渲染器将重建 Chromium 并要求重新登录。")) return;
+  api("POST", "api/auth/reset", {})
+    .then(function (j) {
+      toast("已重置登录态：" + (j.msg || ""));
+      loadFbInfo();
+    })
+    .catch(function (e) { toast(e.message || "重置失败", true); });
+});
+
+document.getElementById("btn-login-help").addEventListener("click", function () {
+  var h = document.getElementById("login-help");
+  if (h) h.classList.toggle("hidden");
+});
+
+function renderFbInfo(info) {
+  var el = document.getElementById("fb-info");
+  if (!info || !info.exists) {
+    el.innerHTML = "未检测到 <b>/dev/fb0</b>（当前环境无帧缓冲输出设备）。";
+    return;
+  }
+  var lines = [];
+  lines.push("分辨率 <b>" + info.w + " × " + info.h + "</b> @ " + info.bpp + "bpp");
+  lines.push("渲染进程：" + (info.renderer_running
+    ? '<span class="ok">运行中</span>（PID ' + info.renderer_pid + "）"
+    : '<span class="bad">未运行</span>（保存设置后会自动拉起）'));
+  el.innerHTML = lines.join("<br>");
+  // 端口信息
+  var httpPort = document.getElementById("port-http");
+  var cdpPort = document.getElementById("port-cdp");
+  if (httpPort && info.http_port) httpPort.textContent = info.http_port;
+  if (cdpPort && info.cdp_port) cdpPort.textContent = info.cdp_port;
+}
+
+// ---------- 本地 HTML 文件 ----------
+function renderLocalList() {
+  var list = document.getElementById("local-edit-list");
+  list.textContent = "";
+  if (!localFiles.length) {
+    var empty = document.createElement("div");
+    empty.style.cssText = "color:var(--dim);font-size:13px;padding:8px";
+    empty.textContent = "暂无文件。在上方上传或新建 HTML。";
+    list.appendChild(empty);
+    return;
+  }
+  localFiles.forEach(function (f) {
+    var row = document.createElement("div");
+    row.className = "page-item";
+    var dot = document.createElement("span"); dot.className = "dot";
+    var icon = document.createElement("span");
+    icon.style.cssText = "font-size:14px;min-width:18px;text-align:center";
+    icon.textContent = f.kind === "image" ? "🖼" :
+      f.kind === "video" ? "🎬" :
+      f.kind === "html" ? "📝" : "📄";
+    var name = document.createElement("span");
+    name.className = "name"; name.textContent = f.name;
+    name.style.cursor = "pointer";
+    name.addEventListener("click", function () {
+      // 文本类（HTML/SVG）→ 读 raw 写入编辑器
+      if (f.kind === "html" || f.kind === "other") {
+        api("GET", "api/pages/raw?name=" + encodeURIComponent(f.name))
+          .then(function (j) {
+            document.getElementById("local-name").value = f.name;
+            document.getElementById("local-content").value = j.content;
+          })
+          .catch(function (e) { toast(e.message, true); });
+      } else {
+        // 媒体类 → 在新窗口预览
+        window.open("api/pages/file?name=" + encodeURIComponent(f.name),
+                    "_blank");
+      }
+    });
+    var detail = document.createElement("span");
+    detail.className = "url";
+    detail.textContent = (f.size / 1024).toFixed(1) + " KB · " +
+      new Date(f.mtime * 1000).toLocaleString("zh-CN") + " · " +
+      (f.mime || "");
+    row.appendChild(dot);
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(detail);
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("btn-local-save").addEventListener("click", function () {
+  var name = document.getElementById("local-name").value.trim();
+  var content = document.getElementById("local-content").value;
+  if (!name) return toast("请填写文件名", true);
+  api("POST", "api/pages/save", { name: name, content: content })
+    .then(function () {
+      toast("已保存 " + name);
+      loadLocalFiles();
+    })
+    .catch(function (e) { toast(e.message || "保存失败", true); });
+});
+document.getElementById("btn-local-delete").addEventListener("click", function () {
+  var name = document.getElementById("local-name").value.trim();
+  if (!name) return toast("请先选择文件", true);
+  if (!confirm("确认删除 " + name + "？")) return;
+  api("POST", "api/pages/delete", { name: name })
+    .then(function () {
+      toast("已删除");
+      document.getElementById("local-name").value = "";
+      document.getElementById("local-content").value = "";
+      loadLocalFiles();
+    })
+    .catch(function (e) { toast(e.message || "删除失败", true); });
+});
+document.getElementById("btn-local-new").addEventListener("click", function () {
+  document.getElementById("local-name").value = "new.html";
+  document.getElementById("local-content").value =
+    "<!DOCTYPE html>\n<html>\n<head><meta charset=\"UTF-8\">\n" +
+    "<title>新页面</title>\n<style>\nbody{margin:0;padding:24px;background:#0e1013;color:#e7eaf0;font-family:sans-serif}\nh1{margin-top:0}\n</style></head>\n<body>\n<h1>Hello Kiosk</h1>\n<p>这是示例本地页面。编辑后保存即可引用。</p>\n</body></html>";
+});
+
+// ---------- 上传（图片/视频/HTML） ----------
+document.getElementById("btn-local-upload").addEventListener("click", function () {
+  var fi = document.getElementById("local-file");
+  var overrideName = document.getElementById("local-upload-name").value.trim();
+  var state = document.getElementById("upload-state");
+  if (!fi.files || !fi.files.length) {
+    return toast("请先选择文件", true);
+  }
+  var f = fi.files[0];
+  // 文件名清理：保留扩展名，做白名单校验
+  var name = overrideName || f.name;
+  // 简单客户端校验（服务端也会再校验）
+  var allowed = /\.(html?|svg|jpg|jpeg|png|gif|webp|bmp|ico|mp4|webm|ogg|mov)$/i;
+  if (!allowed.test(name)) {
+    return toast("不支持的文件类型：" + name, true);
+  }
+  if (f.size > 16 * 1024 * 1024) {
+    return toast("文件超过 16MB 上限", true);
+  }
+  state.textContent = "读取中…";
+  var reader = new FileReader();
+  reader.onload = function () {
+    // reader.result 形如 "data:image/png;base64,xxxxx"
+    var b64 = String(reader.result).split(",", 2)[1];
+    state.textContent = "上传中…";
+    api("POST", "api/pages/save",
+        { name: name, content: b64, encoding: "base64" })
+      .then(function () {
+        state.textContent = "✓ " + name + " (" +
+          (f.size / 1024).toFixed(1) + " KB)";
+        toast("已上传 " + name);
+        fi.value = "";
+        document.getElementById("local-upload-name").value = "";
+        loadLocalFiles();
+      })
+      .catch(function (e) {
+        state.textContent = "✗ 上传失败";
+        toast(e.message || "上传失败", true);
+      });
+  };
+  reader.onerror = function () {
+    state.textContent = "✗ 读取失败";
+    toast("读取文件失败", true);
+  };
+  reader.readAsDataURL(f);
+});
+
+// ---------- 保存 ----------
+function bindConfig() {
+  document.getElementById("set-fb").addEventListener("change", function (e) { cfg.fb_enabled = e.target.checked; });
+  document.getElementById("set-theme").addEventListener("change", function (e) { cfg.theme = e.target.value; });
+  document.getElementById("set-accent").addEventListener("input", function (e) { cfg.accent = e.target.value.trim(); });
+  document.getElementById("set-rotate").addEventListener("change", function (e) { cfg.rotate_seconds = parseInt(e.target.value, 10); });
+  document.getElementById("set-inches").addEventListener("change", function (e) { cfg.screen_inches = parseFloat(e.target.value); });
+  document.getElementById("set-browser-path").addEventListener("input", function (e) { cfg.browser_path = e.target.value.trim(); });
+  document.getElementById("set-win-w").addEventListener("input", function (e) { cfg.browser_window = cfg.browser_window || [1920, 1080]; cfg.browser_window[0] = parseInt(e.target.value, 10) || 1920; });
+  document.getElementById("set-win-h").addEventListener("input", function (e) { cfg.browser_window = cfg.browser_window || [1920, 1080]; cfg.browser_window[1] = parseInt(e.target.value, 10) || 1080; });
+  document.getElementById("set-browser-scale").addEventListener("change", function (e) { cfg.browser_scale = parseFloat(e.target.value); });
+  document.getElementById("set-browser-timeout").addEventListener("input", function (e) { cfg.browser_timeout = parseInt(e.target.value, 10) || 30; });
+  document.getElementById("set-hide-cursor").addEventListener("change", function (e) { cfg.hide_cursor = e.target.checked; });
+  document.getElementById("set-allow-private").addEventListener("change", function (e) { cfg.allow_private_hosts = e.target.checked; });
+}
+
+function fillFromCfg() {
+  document.getElementById("set-fb").checked = !!cfg.fb_enabled;
+  document.getElementById("set-theme").value = cfg.theme || "midnight";
+  document.getElementById("set-accent").value = cfg.accent || "";
+  document.getElementById("set-rotate").value = cfg.rotate_seconds || 30;
+  document.getElementById("set-inches").value = cfg.screen_inches || 0;
+  // seg
+  document.querySelectorAll("#seg-rotate button").forEach(function (b) {
+    b.classList.toggle("active", parseInt(b.dataset.v, 10) === (cfg.fb_rotate || 0));
+  });
+  document.querySelectorAll("#seg-mode button").forEach(function (b) {
+    b.classList.toggle("active", b.dataset.v === (cfg.default_mode || "cycle"));
+  });
+  // browser
+  document.getElementById("set-browser-path").value = cfg.browser_path || "";
+  var win = cfg.browser_window || [1920, 1080];
+  document.getElementById("set-win-w").value = win[0];
+  document.getElementById("set-win-h").value = win[1];
+  document.getElementById("set-browser-scale").value = cfg.browser_scale || 1;
+  document.getElementById("set-browser-timeout").value = cfg.browser_timeout || 30;
+  document.getElementById("set-hide-cursor").checked = cfg.hide_cursor !== false;
+  document.getElementById("set-allow-private").checked = !!cfg.allow_private_hosts;
+}
+
+document.getElementById("btn-save").addEventListener("click", function () {
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = "保存中…";
+  document.getElementById("save-state").textContent = "";
+  api("POST", "api/settings", cfg)
+    .then(function (j) {
+      cfg = j.config;
+      fillFromCfg();
+      renderPageList();
+      toast("已保存并同步到显示屏");
+      loadFbInfo();
+    })
+    .catch(function (e) { toast(e.message || "保存失败", true); })
+    .then(function () {
+      btn.disabled = false;
+      btn.textContent = "保存并同步到显示屏";
+    });
+});
+
+// ---------- 预览 ----------
+function refreshPreview() {
+  var img = document.getElementById("fb-preview");
+  var hide = document.getElementById("preview-placeholder");
+  if (!img) return;
+  img.src = "api/fb/dump.png?t=" + Date.now();
+  img.onerror = function () { if (hide) hide.classList.remove("hidden"); };
+  img.onload = function () { if (hide) hide.classList.add("hidden"); };
+}
+document.getElementById("preview-refresh").addEventListener("click", refreshPreview);
+
+// ---------- 加载 ----------
+function loadLocalFiles() {
+  return api("GET", "api/pages").then(function (j) {
+    localFiles = j.pages || [];
+    renderLocalList();
+  });
+}
+function loadFbInfo() {
+  return api("GET", "api/fb/info").then(function (j) {
+    renderFbInfo(j.fb);
+    renderAuthInfo(j.fb);
+  });
+}
+function loadAll() {
+  return api("GET", "api/status").then(function (j) {
+    cfg = j.config;
+    fillFromCfg();
+    renderPageList();
+  }).then(loadLocalFiles).then(loadFbInfo);
+}
+
+bindConfig();
+loadAll().catch(function (e) {
+  toast(e.message || "加载失败", true);
+});
+setInterval(refreshPreview, 3000);
