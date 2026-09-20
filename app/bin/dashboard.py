@@ -30,7 +30,7 @@ def main():
     ap = argparse.ArgumentParser(description="fnOS 浏览器屏后端")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int,
-                    default=int(os.environ.get("TRIM_SERVICE_PORT", "8200")))
+                    default=int(os.environ.get("TRIM_SERVICE_PORT", "8280")))
     ap.add_argument("--web", default=os.path.normpath(os.path.join(here, "..", "web")))
     ap.add_argument("--config",
                     default=os.path.join(

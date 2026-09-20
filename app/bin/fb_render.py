@@ -398,10 +398,10 @@ class Fetcher(threading.Thread):
 def main():
     ap = argparse.ArgumentParser(description="fnOS 浏览器屏 显示器渲染器")
     ap.add_argument("--fb", default="/dev/fb0")
-    # 默认从环境变量读 TRIM_SERVICE_PORT（fnOS 注入），再退回 8200。
+    # 默认从环境变量读 TRIM_SERVICE_PORT（fnOS 注入），再退回 8280。
     # 上游 dash_http.py 始终传 --api 显式值，此默认值仅作直接调试兜底。
     ap.add_argument("--api", default="http://127.0.0.1:" +
-                    os.environ.get("TRIM_SERVICE_PORT", "8200"))
+                    os.environ.get("TRIM_SERVICE_PORT", "8280"))
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--pages-dir", default="")
     # Chromium CDP 远程调试端口默认 9223，可被 KIOSK_CDP_PORT 覆盖以防端口冲突。
