@@ -99,7 +99,7 @@ DEFAULT_CONFIG = {
     "display_fit": "contain",
     "screen_inches": 0,
     "browser_path": "",        # 自定义 chromium 路径（空则自动找）
-    "browser_window": [1920, 1080],   # 浏览器视口尺寸（与 fb 实际分辨率尽量匹配，缩放精度更好）
+    "browser_window": "match_fb",   # 浏览器视口尺寸；"match_fb" 自动等于 fb0 物理分辨率（推荐）；或 [w, h]
     "browser_scale": 1.0,      # 设备像素比（HiDPI 屏可调 1.5/2.0 让字体更清晰）
     "browser_timeout": 30,     # Page.navigate 超时秒
     "chromium_profile_dir": "", # 自定义 profile 路径（留空 = var/chromium-profile，自动持久化）
@@ -223,11 +223,14 @@ class Config:
         out["browser_timeout"] = _clip_int(out.get("browser_timeout"), 5, 120, 30)
         out["browser_scale"] = _clip_float(out.get("browser_scale"), 0.5, 3.0, 1.0)
         # 视口
-        win = out.get("browser_window") or [1920, 1080]
-        if not (isinstance(win, list) and len(win) == 2):
-            win = [1920, 1080]
-        out["browser_window"] = [_clip_int(win[0], 320, 7680, 1920),
-                                  _clip_int(win[1], 240, 4320, 320)]
+        win = out.get("browser_window") or "match_fb"
+        if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
+            out["browser_window"] = "match_fb"
+        else:
+            if not (isinstance(win, list) and len(win) == 2):
+                win = [1920, 1080]
+            out["browser_window"] = [_clip_int(win[0], 320, 7680, 1920),
+                                      _clip_int(win[1], 240, 4320, 320)]
         out["browser_path"] = _clip_str(out.get("browser_path"), 256)
         profile = _clip_str(out.get("chromium_profile_dir"), 256)
         # profile_dir 只接受绝对路径且不能含 ..（防路径穿越）
@@ -307,10 +310,13 @@ class Config:
             clean["browser_scale"] = _clip_float(patch["browser_scale"], 0.5, 3.0, 1.0)
         if "browser_window" in patch:
             w = patch["browser_window"]
-            if not (isinstance(w, list) and len(w) == 2):
-                return False, "browser_window 必须是 [W, H] 数组"
-            clean["browser_window"] = [_clip_int(w[0], 320, 7680, 1920),
-                                       _clip_int(w[1], 240, 4320, 320)]
+            if isinstance(w, str) and w.lower() in ("match_fb", "fb", "auto"):
+                clean["browser_window"] = "match_fb"
+            else:
+                if not (isinstance(w, list) and len(w) == 2):
+                    return False, "browser_window 必须是 [W, H] 数组或 'match_fb'"
+                clean["browser_window"] = [_clip_int(w[0], 320, 7680, 1920),
+                                           _clip_int(w[1], 240, 4320, 320)]
         if "pages" in patch:
             pages = patch["pages"]
             if not isinstance(pages, list):

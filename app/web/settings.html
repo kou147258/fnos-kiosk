@@ -121,6 +121,14 @@
         </label>
         <p class="hint">自动检测失败时请手动填写。</p>
         <h3>窗口尺寸</h3>
+        <div class="seg" id="seg-win-preset">
+          <button data-v="match_fb" class="active">📐 自适应显示器（推荐）</button>
+          <button data-v="1024,768">1024×768（4:3）</button>
+          <button data-v="1280,800">1280×800（16:10）</button>
+          <button data-v="1920,1080">1920×1080（16:9）</button>
+          <button data-v="custom">自定义</button>
+        </div>
+        <p class="hint"><b>自适应显示器</b>——窗口尺寸 = 显示器物理分辨率（<code id="fb-dim-show">—</code>），截图即填满，无 letterbox / 裁切。强烈推荐。<br>选「自定义」可手动改下方宽高。</p>
         <div class="row-2">
           <label class="field">宽度
             <input type="number" id="set-win-w" class="text-input" min="320" max="7680">
@@ -129,7 +137,6 @@
             <input type="number" id="set-win-h" class="text-input" min="240" max="4320">
           </label>
         </div>
-        <p class="hint">建议填显示器实际分辨率（如 1920×1080、1280×800）；缩放更精确。</p>
         <h3>设备像素比（Chromium 渲染倍率）</h3>
         <label class="field">Scale
           <select id="set-browser-scale">

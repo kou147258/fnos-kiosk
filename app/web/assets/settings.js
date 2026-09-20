@@ -237,6 +237,26 @@ document.getElementById("seg-fit").addEventListener("click", function (e) {
   cfg.display_fit = b.dataset.v;
 });
 
+document.getElementById("seg-win-preset").addEventListener("click", function (e) {
+  var b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#seg-win-preset button").forEach(function (x) { x.classList.remove("active"); });
+  b.classList.add("active");
+  var v = b.dataset.v;
+  if (v === "custom") {
+    // 不动 cfg，让用户用下方两个输入框
+    return;
+  }
+  if (v === "match_fb") {
+    cfg.browser_window = "match_fb";
+  } else {
+    var parts = v.split(",");
+    cfg.browser_window = [parseInt(parts[0], 10), parseInt(parts[1], 10)];
+    document.getElementById("set-win-w").value = parts[0];
+    document.getElementById("set-win-h").value = parts[1];
+  }
+});
+
 function renderAuthInfo(info) {
   // 在「浏览器」tab 顶部展示登录态信息
   var stateEl = document.getElementById("auth-state");
@@ -798,9 +818,37 @@ function fillFromCfg() {
   });
   // browser
   document.getElementById("set-browser-path").value = cfg.browser_path || "";
-  var win = cfg.browser_window || [1920, 1080];
-  document.getElementById("set-win-w").value = win[0];
-  document.getElementById("set-win-h").value = win[1];
+  // browser_window 支持 "match_fb" 字符串 或 [w, h]
+  var win = cfg.browser_window;
+  var fbDimEl = document.getElementById("fb-dim-show");
+  // 从 /api/fb/info 拿 fb 尺寸
+  api("GET", "api/fb/info").then(function (j) {
+    if (fbDimEl && j && j.fb) {
+      fbDimEl.textContent = (j.fb.w || 0) + " × " + (j.fb.h || 0);
+    }
+  }).catch(function () {});
+  // 判断当前 browser_window 对应哪个预设
+  var preset = "custom";
+  if (typeof win === "string") {
+    preset = win.toLowerCase();
+  } else if (Array.isArray(win)) {
+    preset = win[0] + "," + win[1];
+  }
+  document.querySelectorAll("#seg-win-preset button").forEach(function (b) {
+    b.classList.toggle("active", b.dataset.v === preset);
+  });
+  if (Array.isArray(win)) {
+    document.getElementById("set-win-w").value = win[0];
+    document.getElementById("set-win-h").value = win[1];
+  } else {
+    // match_fb 时显示 fb 尺寸作为预览
+    api("GET", "api/fb/info").then(function (j) {
+      if (j && j.fb) {
+        document.getElementById("set-win-w").value = j.fb.w || "";
+        document.getElementById("set-win-h").value = j.fb.h || "";
+      }
+    }).catch(function () {});
+  }
   document.getElementById("set-browser-scale").value = cfg.browser_scale || 1;
   document.getElementById("set-browser-timeout").value = cfg.browser_timeout || 30;
   document.getElementById("set-hide-cursor").checked = cfg.hide_cursor !== false;

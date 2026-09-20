@@ -672,8 +672,13 @@ def main():
         time.sleep(0.1)
 
     cfg = fetcher.config or {}
-    win_w = int(((cfg.get("browser_window") or [1920, 1080])[0]))
-    win_h = int(((cfg.get("browser_window") or [1920, 1080])[1]))
+    # browser_window 支持 "match_fb" 字符串（直接匹配 fb 物理尺寸，截图即屏）
+    bw_cfg = cfg.get("browser_window") or "match_fb"
+    if isinstance(bw_cfg, str) and bw_cfg.lower() in ("match_fb", "fb", "auto"):
+        win_w, win_h = W, H
+    else:
+        win_w = int((bw_cfg or [1920, 1080])[0])
+        win_h = int((bw_cfg or [1920, 1080])[1])
     # 计算默认 user-data-dir：用户未配置时用 var/chromium-profile 持久化
     # （cookies / localStorage / IndexedDB / autofill / Service Worker 都留存）
     var_dir_for_profile = os.environ.get("TRIM_PKGVAR") or \
@@ -848,14 +853,19 @@ def main():
                 rotate = new_rotate
                 # 浏览器窗口尺寸在 rotate 变化时无需重启（截屏在 PIL 端旋转）
                 # 但窗口尺寸若变化需要重启 Chromium
-                win = cfg.get("browser_window") or [1920, 1080]
-                if (win[0], win[1]) != (browser.window[0], browser.window[1]):
+                win = cfg.get("browser_window") or "match_fb"
+                if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
+                    new_w, new_h = W, H
+                else:
+                    new_w = int(win[0])
+                    new_h = int(win[1])
+                if (new_w, new_h) != (browser.window[0], browser.window[1]):
                     print("[fb] 窗口尺寸变化，重启 Chromium (%dx%d → %dx%d)" %
-                          (browser.window[0], browser.window[1], win[0], win[1]),
+                          (browser.window[0], browser.window[1], new_w, new_h),
                           flush=True)
                     browser.close()
                     browser = Browser(
-                        window=(int(win[0]), int(win[1])),
+                        window=(new_w, new_h),
                         port=args.cdp_port,
                         chromium_path=cfg.get("browser_path", ""),
                         scale=float(cfg.get("browser_scale", 1.0)),
