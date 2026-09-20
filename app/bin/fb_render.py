@@ -868,25 +868,29 @@ def main():
             canvas._fit_mode = (cfg.get("display_fit") or "contain").lower()
             if canvas._fit_mode not in ("contain", "cover", "stretch"):
                 canvas._fit_mode = "contain"
+            # 计算目标窗口尺寸（受 browser_window + display_zoom 共同影响）
+            win = cfg.get("browser_window") or "match_fb"
+            if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
+                new_w, new_h = W, H
+            else:
+                new_w = int(win[0])
+                new_h = int(win[1])
+            zoom_now = float(cfg.get("display_zoom", 1.0) or 1.0)
+            if zoom_now <= 0:
+                zoom_now = 1.0
+            new_w = max(320, int(new_w / zoom_now))
+            new_h = max(240, int(new_h / zoom_now))
+            # 窗口尺寸或旋转变了，都需要重建 Browser（rotate 用 PIL 旋转贴图；
+            # 尺寸用 Chromium 重新启动确保截图大小正确）
+            cur_w, cur_h = browser.window[0], browser.window[1]
+            need_restart = (new_w, new_h) != (cur_w, cur_h)
             if new_rotate != rotate:
                 rotate = new_rotate
-                # 浏览器窗口尺寸在 rotate 变化时无需重启（截屏在 PIL 端旋转）
-                # 但窗口尺寸若变化需要重启 Chromium
-                win = cfg.get("browser_window") or "match_fb"
-                if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
-                    new_w, new_h = W, H
-                else:
-                    new_w = int(win[0])
-                    new_h = int(win[1])
-                # display_zoom 应用（与启动期逻辑一致）
-                zoom_now = float(cfg.get("display_zoom", 1.0) or 1.0)
-                if zoom_now <= 0:
-                    zoom_now = 1.0
-                new_w = max(320, int(new_w / zoom_now))
-                new_h = max(240, int(new_h / zoom_now))
-                if (new_w, new_h) != (browser.window[0], browser.window[1]):
+                need_restart = True
+            if need_restart:
+                if (new_w, new_h) != (cur_w, cur_h):
                     print("[fb] 窗口尺寸变化，重启 Chromium (%dx%d → %dx%d)" %
-                          (browser.window[0], browser.window[1], new_w, new_h),
+                          (cur_w, cur_h, new_w, new_h),
                           flush=True)
                     browser.close()
                     browser = Browser(
@@ -1003,7 +1007,10 @@ def main():
                 if canvas.last_error:
                     hud.error_overlay(canvas.last_error)
                 n_cycle = len(dash_pages.list_visible_pages(cfg))
-                hud.footer(n_cycle, idx=0, rotate_sec=rotate_sec,
+                # cycle 模式用真实 idx，single 模式 idx=0（HUD footer 内部对
+                # is_single=True 会改成「SINGLE URL MODE」字样，不需要 idx）
+                foot_idx = idx if not is_single else 0
+                hud.footer(n_cycle, idx=foot_idx, rotate_sec=rotate_sec,
                            is_single=is_single)
             except Exception as e:
                 draw_failed = True
