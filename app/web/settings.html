@@ -54,8 +54,10 @@
         <div class="row-2">
           <button id="btn-fb-restart" class="btn-mini">🔄 手动重启渲染进程</button>
           <button id="btn-fb-log" class="btn-mini">📋 查看 fb.log</button>
+          <button id="btn-fb-diag" class="btn-mini">🩺 一键诊断</button>
         </div>
         <pre id="fb-log" class="hint fb-log-pre hidden"></pre>
+        <pre id="fb-diag" class="hint fb-log-pre hidden"></pre>
         <p class="hint">当前占用端口：HTTP API <code id="port-http">—</code>，Chromium 远程调试 <code id="port-cdp">—</code>。两者均绑定 127.0.0.1（仅本机访问）。如需更换 CDP 端口，在启动 fb_render 前设置环境变量 <code>KIOSK_CDP_PORT=&lt;port&gt;</code>。</p>
         <h3>显示方向</h3>
         <div class="seg" id="seg-rotate">

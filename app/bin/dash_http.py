@@ -416,6 +416,105 @@ class Handler(BaseHTTPRequestHandler):
             pass
         return info
 
+    def _fb_diag(self):
+        """一键诊断：fb0 状态 + 进程权限 + Chromium + 日志。"""
+        import grp
+        import subprocess
+        info = {}
+        # fb0 文件属性
+        try:
+            st = os.stat("/dev/fb0")
+            info["fb0_exists"] = True
+            info["fb0_mode_octal"] = oct(st.st_mode & 0o777)
+            info["fb0_uid"] = st.st_uid
+            info["fb0_gid"] = st.st_gid
+        except OSError as e:
+            info["fb0_exists"] = False
+            info["fb0_error"] = str(e)
+        try:
+            st = os.stat("/sys/class/graphics/fb0/virtual_size")
+            info["fb0_virtual_size"] = open(
+                "/sys/class/graphics/fb0/virtual_size").read().strip()
+            info["fb0_bpp"] = int(open(
+                "/sys/class/graphics/fb0/bits_per_pixel").read().strip())
+        except OSError:
+            pass
+        # 实际可读写？
+        info["fb0_readable"] = os.access("/dev/fb0", os.R_OK)
+        info["fb0_writable"] = os.access("/dev/fb0", os.W_OK)
+        # 当前进程身份
+        info["pgid"] = os.getgid()
+        info["puid"] = os.getuid()
+        # 是否在 video 组
+        try:
+            video_gid = grp.getgrnam("video").gr_gid
+            info["video_gid"] = video_gid
+            info["in_video_group"] = (os.getgid() == video_gid) or \
+                ("video" in os.getgroups())
+        except KeyError:
+            info["video_gid"] = None
+            info["in_video_group"] = False
+        # fb_render 进程状态
+        pid_file = os.path.join(self.var_dir, "fb.pid")
+        info["fb_pid_file"] = pid_file
+        try:
+            with open(pid_file) as f:
+                pid = int(f.read().strip())
+            try:
+                os.kill(pid, 0)
+                info["fb_render_alive"] = True
+                info["fb_render_pid"] = pid
+            except OSError:
+                info["fb_render_alive"] = False
+                info["fb_render_pid"] = pid
+        except (OSError, ValueError):
+            info["fb_render_alive"] = False
+            info["fb_render_pid"] = None
+        # watchdog 状态
+        wd_file = os.path.join(self.var_dir, "wd.pid")
+        try:
+            with open(wd_file) as f:
+                pid = int(f.read().strip())
+            try:
+                os.kill(pid, 0)
+                info["watchdog_alive"] = True
+                info["watchdog_pid"] = pid
+            except OSError:
+                info["watchdog_alive"] = False
+        except (OSError, ValueError):
+            info["watchdog_alive"] = False
+        # chromium 是否在 PATH
+        for c in ("chromium", "chromium-browser", "google-chrome"):
+            p = subprocess.run(["which", c], capture_output=True, text=True,
+                               timeout=3)
+            path = (p.stdout or "").strip()
+            if path:
+                info["chromium_path"] = path
+                info["chromium_name"] = c
+                break
+        # PIL 可用
+        try:
+            import PIL  # noqa
+            info["pil_available"] = True
+        except ImportError:
+            info["pil_available"] = False
+        # profile 目录
+        profile = self._profile_dir()
+        info["profile_dir"] = profile
+        info["profile_exists"] = os.path.isdir(profile)
+        # fb.log 末尾 30 行
+        log_path = os.path.join(self.var_dir, "fb.log")
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                info["fb_log_tail"] = "".join(f.readlines()[-30:])
+        except OSError:
+            info["fb_log_tail"] = ""
+        # 配置文件 fb_enabled
+        cfg = self.config.get() if self.config else {}
+        info["fb_enabled_in_config"] = bool(cfg.get("fb_enabled"))
+        info["pages_count"] = len(cfg.get("pages") or [])
+        return info
+
     def _fb_dump_png(self):
         try:
             w, h, bgra, stride = fb_raw_read()
@@ -506,6 +605,10 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             self._send_json(200, {"ok": True, "log": "".join(lines)})
+            return
+        if path == "/api/fb/diag":
+            # 一键诊断：把环境 + 权限 + 进程状态打包返回
+            self._send_json(200, {"ok": True, "diag": self._fb_diag()})
             return
 
         rel = path if path != "/" else "/index.html"

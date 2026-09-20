@@ -424,6 +424,37 @@ def main():
     W, H = fb.w, fb.h
     print("[fb] %dx%d stride=%d" % (W, H, fb.stride), flush=True)
 
+    # ---- 立刻写一帧"启动中"屏到 fb0（不依赖 Chromium）----
+    # 这一步至关重要：它向用户证明 fb0 写权限拿到了（哪怕 Chromium 还没起来）。
+    # 同时记录关键诊断信息到 fb.log，调试用。
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        _diag_img = Image.new("RGB", (W, H), (10, 19, 34))
+        _diag_draw = ImageDraw.Draw(_diag_img)
+        _font_path = None
+        for _fp in (FONT_LATIN_CANDIDATES + FONT_CJK_CANDIDATES):
+            if os.path.exists(_fp):
+                _font_path = _fp
+                break
+        _font_big = ImageFont.truetype(_font_path, max(28, W // 24)) if _font_path else None
+        _font_sm = ImageFont.truetype(_font_path, max(16, W // 40)) if _font_path else None
+        _lines = [
+            ("fnos-kiosk 启动中", (232, 238, 251)),
+            ("正在拉取 Chromium 截图……", (147, 165, 196)),
+            ("fb0 = %dx%d @ 32bpp" % (W, H), (147, 165, 196)),
+        ]
+        for i, (txt, col) in enumerate(_lines):
+            _diag_draw.text((W // 2, H // 3 + i * (H // 8)),
+                            txt, fill=col, font=_font_big, anchor="mm")
+        # 右下角写个时间戳
+        _ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _diag_draw.text((W - 16, H - 16), _ts, fill=(60, 80, 110),
+                        font=_font_sm, anchor="rb")
+        fb.blit(_diag_img.convert("RGBA").tobytes("raw", "BGRA"))
+        print("[fb] 启动中屏已写入 fb0（Chromium 还没起来，正在初始化）", flush=True)
+    except Exception as e:
+        print("[fb] 写启动屏失败（%r）——fb0 可能不可写" % e, flush=True)
+
     # ---- 后台拉数据 ----
     fetcher = Fetcher(args.api, args.interval)
     fetcher.start()
@@ -473,7 +504,48 @@ def main():
         )
 
     # Chromium 启动重试：backoff 5s → 10s → 20s → 30s 上限
+    # 每次失败时往 fb0 写一个错误屏（用户能直接看到排查线索）
     _retry_delays = [5, 10, 20, 30]
+
+    def _write_error_screen(title, detail):
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            img = Image.new("RGB", (W, H), (40, 10, 10))
+            d = ImageDraw.Draw(img)
+            _fp = None
+            for _p in (FONT_LATIN_CANDIDATES + FONT_CJK_CANDIDATES):
+                if os.path.exists(_p):
+                    _fp = _p
+                    break
+            f_big = ImageFont.truetype(_fp, max(24, W // 28)) if _fp else None
+            f_sm = ImageFont.truetype(_fp, max(14, W // 50)) if _fp else None
+            d.rectangle([(0, 0), (W, H)], outline=(248, 113, 113), width=4)
+            d.text((W // 2, H // 3), title, fill=(248, 113, 113),
+                   font=f_big, anchor="mm")
+            # 错误详情（截断到屏幕宽度内）
+            for i, line in enumerate(_wrap_text(detail, W // 12, f_sm)[:6]):
+                d.text((W // 2, H // 2 + i * (H // 18)), line,
+                       fill=(232, 238, 251), font=f_sm, anchor="mm")
+            d.text((W // 2, int(H * 0.85)),
+                   "查看详细日志：设置 → 显示 → 📋 查看 fb.log",
+                   fill=(245, 158, 11), font=f_sm, anchor="mm")
+            fb.blit(img.convert("RGBA").tobytes("raw", "BGRA"))
+        except Exception as ee:
+            print("[fb] 写错误屏失败：%r" % ee, flush=True)
+
+    def _wrap_text(s, max_px, font):
+        if not font or not s:
+            return [s]
+        out, cur = [], ""
+        for ch in s:
+            cur += ch
+            if font.getlength(cur) > max_px:
+                out.append(cur[:-1])
+                cur = ch
+        if cur:
+            out.append(cur)
+        return out
+
     browser = _spawn_browser(cfg)
     while True:
         try:
@@ -486,8 +558,11 @@ def main():
             delay = _retry_delays[min(main._spawn_attempts, len(_retry_delays) - 1)] \
                 if hasattr(main, "_spawn_attempts") else 5
             main._spawn_attempts = getattr(main, "_spawn_attempts", 0) + 1
-            print("[fb] Chromium 启动失败（#%d，将在 %ds 后重试）：%r"
-                  % (main._spawn_attempts, delay, e), flush=True)
+            err_msg = "Chromium 启动失败（#%d）" % main._spawn_attempts
+            err_detail = str(e)[:200]
+            print("[fb] %s，将在 %ds 后重试：%r"
+                  % (err_msg, delay, e), flush=True)
+            _write_error_screen(err_msg, err_detail)
             try:
                 browser.close()
             except Exception:

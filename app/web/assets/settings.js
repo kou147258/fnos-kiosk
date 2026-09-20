@@ -276,6 +276,63 @@ document.getElementById("btn-fb-log").addEventListener("click", function () {
   }
 });
 
+document.getElementById("btn-fb-diag").addEventListener("click", function () {
+  var el = document.getElementById("fb-diag");
+  if (!el) return;
+  if (el.classList.contains("hidden")) {
+    api("GET", "api/fb/diag").then(function (j) {
+      var d = j.diag || {};
+      var lines = [];
+      // fb0 状态
+      lines.push("=== fb0 ===");
+      lines.push("存在: " + (d.fb0_exists ? "✓" : "✗"));
+      if (d.fb0_exists) {
+        lines.push("权限: " + (d.fb0_mode_octal || "?") +
+                   "  uid=" + (d.fb0_uid || "?") +
+                   "  gid=" + (d.fb0_gid || "?"));
+        lines.push("可读: " + (d.fb0_readable ? "✓" : "✗") +
+                   "  可写: " + (d.fb0_writable ? "✓" : "✗"));
+        lines.push("规格: " + (d.fb0_virtual_size || "?") + " @ " +
+                   (d.fb0_bpp || "?") + "bpp");
+      }
+      lines.push("");
+      // 进程身份
+      lines.push("=== 当前进程身份 ===");
+      lines.push("uid=" + (d.puid || "?") + "  gid=" + (d.pgid || "?"));
+      lines.push("video 组存在: " + (d.video_gid != null ? "✓ (gid=" + d.video_gid + ")" : "✗"));
+      lines.push("当前进程在 video 组: " + (d.in_video_group ? "✓" : "✗"));
+      lines.push("");
+      // 进程状态
+      lines.push("=== 渲染 / watchdog ===");
+      lines.push("fb_render: " + (d.fb_render_alive ?
+        "运行中 (PID " + d.fb_render_pid + ")" :
+        "未运行" + (d.fb_render_pid ? "（残留 PID " + d.fb_render_pid + "）" : "")));
+      lines.push("watchdog: " + (d.watchdog_alive ? "运行中" : "未运行"));
+      lines.push("");
+      // 依赖
+      lines.push("=== 依赖 ===");
+      lines.push("chromium: " + (d.chromium_path ?
+          (d.chromium_name + " → " + d.chromium_path) : "✗ 未找到"));
+      lines.push("python3-PIL: " + (d.pil_available ? "✓" : "✗ 缺失"));
+      lines.push("profile 目录: " + (d.profile_exists ? "✓ 已创建" : "未创建") +
+                 " (" + (d.profile_dir || "?") + ")");
+      lines.push("");
+      // 配置
+      lines.push("=== 配置 ===");
+      lines.push("fb_enabled: " + (d.fb_enabled_in_config ? "true" : "false"));
+      lines.push("已配置页面数: " + (d.pages_count || 0));
+      lines.push("");
+      // fb.log
+      lines.push("=== fb.log 末尾 ===");
+      lines.push(d.fb_log_tail || "（无日志）");
+      el.textContent = lines.join("\n");
+      el.classList.remove("hidden");
+    }).catch(function (e) { toast(e.message || "诊断失败", true); });
+  } else {
+    el.classList.add("hidden");
+  }
+});
+
 document.getElementById("btn-login-help").addEventListener("click", function () {
   var h = document.getElementById("login-help");
   if (h) h.classList.toggle("hidden");
