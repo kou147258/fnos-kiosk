@@ -291,7 +291,7 @@ class Browser:
             "--disable-gpu",
             "--disable-dev-shm-usage",
             "--hide-scrollbars",
-            "--disable-features=Translate,BackForwardCache",
+            "--disable-features=Translate,BackForwardCache,PaintHolding",
             "--mute-audio",
             "--autoplay-policy=no-user-gesture-required",  # 让视频/音频无需用户手势自动播放
             "--disable-extensions",
@@ -308,7 +308,6 @@ class Browser:
             "--overscroll-history-navigation=0", # 禁用手势前进后退
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
-            "--disable-features=PaintHolding,AutoupgradeMixedContent",
         ]
         if self.hide_cursor:
             args.append("--hide-cursor")
