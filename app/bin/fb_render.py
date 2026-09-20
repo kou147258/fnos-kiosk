@@ -503,7 +503,7 @@ class HUD:
         W = c.width if hasattr(c, "width") else self.c.img.width
         # 半透明顶栏
         bar_h = int(60 * s)
-        overlay = self._Image.new("RGBA", (W, bar_h),
+        overlay = self._ImageDraw.new("RGBA", (W, bar_h),
                                   (*self.pal["bg"], 180))
         self.c.img.paste(overlay, (0, 0), overlay)
         # 页名（左）
@@ -524,7 +524,7 @@ class HUD:
         H = c.height if hasattr(c, "height") else self.c.img.height
         bar_h = int(36 * s)
         y0 = H - bar_h
-        overlay = self._Image.new("RGBA", (W, bar_h),
+        overlay = self._ImageDraw.new("RGBA", (W, bar_h),
                                   (*self.pal["bg"], 160))
         self.c.img.paste(overlay, (0, y0), overlay)
         if is_single:
@@ -554,7 +554,7 @@ class HUD:
         box_h = int(80 * s)
         x0 = (W - box_w) // 2
         y0 = (H - box_h) // 2
-        overlay = self._Image.new("RGBA", (box_w, box_h),
+        overlay = self._ImageDraw.new("RGBA", (box_w, box_h),
                                   (*self.pal["bg"], 220))
         self.c.img.paste(overlay, (x0, y0), overlay)
         self.c.rectangle([x0, y0, x0 + box_w, y0 + box_h],
