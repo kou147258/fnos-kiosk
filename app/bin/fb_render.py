@@ -129,7 +129,9 @@ def _discover_cjk_font():
 
 
 def _pick_cjk_font_path():
-    """先扫盘 + fc-list，再退回硬编码候选。"""
+    """先扫盘 + fc-list，再退回硬编码候选。
+    优先选「同时含 Latin 和 CJK」的字体（如 wqy-microhei），
+    否则选纯 CJK 字体（启动屏 / 错误屏会和 DejaVu Sans 配合用）。"""
     discovered = _discover_cjk_font()
     if discovered:
         return discovered
@@ -150,6 +152,113 @@ def _pick_cjk_font_path():
         if os.path.exists(p):
             return p
     return ""
+
+
+def _pick_latin_font_path():
+    """Latin 字体（必须含 ASCII 拉丁字符）。"""
+    # 先看是否已有 DejaVu / Noto Sans Mono 等
+    for p in FONT_LATIN_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    # fc-list 找一个 :lang=en 的
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["fc-list", ":lang=en", "file"],
+            capture_output=True, text=True, timeout=3)
+        for line in (r.stdout or "").splitlines():
+            line = line.strip().rstrip(":")
+            if line and line.lower().endswith((".ttf", ".otf", ".ttc")):
+                return line
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return ""
+
+
+def _is_cjk(ch):
+    """判断是否 CJK 字符（含中文、日文、韩文、汉字标点）。"""
+    o = ord(ch)
+    if 0x2E80 <= o <= 0x9FFF:    # CJK 基础 + 扩展 A
+        return True
+    if 0xAC00 <= o <= 0xD7AF:    # 韩文
+        return True
+    if 0x3000 <= o <= 0x303F:    # CJK 标点
+        return True
+    if 0xFF00 <= o <= 0xFFEF:    # 全角字符
+        return True
+    if 0x3400 <= o <= 0x4DBF:    # CJK 扩展 B
+        return True
+    return False
+
+
+def _draw_text_mixed(d, xy, text, latin_font, cjk_font, fill, anchor="la"):
+    """PIL 不支持字体回退，所以逐字符按 CJK / Latin 分段渲染。
+
+    anchor 同 PIL：第一个字符 'l'/'r'/'c'，第二个字符 'a'/'m'/'b'/'t'/'b'。
+    """
+    if not text:
+        return
+    # 1. 测总宽
+    def measure(s):
+        f = cjk_font if any(_is_cjk(c) for c in s) else latin_font
+        return f.getlength(s)
+
+    total_w = 0.0
+    cur_run = ""
+    cur_kind = None
+    for ch in text:
+        k = "cjk" if _is_cjk(ch) else "latin"
+        if k != cur_kind and cur_run:
+            total_w += measure(cur_run)
+            cur_run = ""
+            cur_kind = k
+        cur_run += ch
+        if cur_kind is None:
+            cur_kind = k
+    if cur_run:
+        total_w += measure(cur_run)
+
+    x, y = xy
+    if anchor[0] == "r":
+        x -= total_w
+    elif anchor[0] == "c":
+        x -= total_w / 2
+    va = anchor[1] if len(anchor) > 1 else "a"
+
+    # 2. 实际渲染
+    cur_run = ""
+    cur_kind = None
+    for ch in text:
+        k = "cjk" if _is_cjk(ch) else "latin"
+        if k != cur_kind and cur_run:
+            f = cjk_font if cur_kind == "cjk" else latin_font
+            d.text((x, y), cur_run, fill=fill, font=f, anchor="l" + va)
+            x += f.getlength(cur_run)
+            cur_run = ""
+        cur_run += ch
+        cur_kind = k
+    if cur_run:
+        f = cjk_font if cur_kind == "cjk" else latin_font
+        d.text((x, y), cur_run, fill=fill, font=f, anchor="l" + va)
+
+
+def _measure_text_mixed(text, latin_font, cjk_font):
+    """_draw_text_mixed 的纯测量版（用于其他需要总宽度的场合）。"""
+    total = 0.0
+    cur_run = ""
+    cur_kind = None
+    for ch in text:
+        k = "cjk" if _is_cjk(ch) else "latin"
+        if k != cur_kind and cur_run:
+            f = cjk_font if cur_kind == "cjk" else latin_font
+            total += f.getlength(cur_run)
+            cur_run = ""
+        cur_run += ch
+        cur_kind = k
+    if cur_run:
+        f = cjk_font if cur_kind == "cjk" else latin_font
+        total += f.getlength(cur_run)
+    return total
 
 
 # --------------------------------------------------------------------------
@@ -506,24 +615,29 @@ def main():
         from PIL import Image, ImageDraw, ImageFont
         _diag_img = Image.new("RGB", (W, H), (10, 19, 34))
         _diag_draw = ImageDraw.Draw(_diag_img)
-        # 智能选字体：扫盘 + fc-list，避开硬编码路径假设
-        _font_path = _pick_cjk_font_path()
-        if _font_path:
-            print("[fb] 选用字体: %s" % _font_path, flush=True)
-        _font_big = ImageFont.truetype(_font_path, max(32, W // 22)) if _font_path else None
-        _font_sm = ImageFont.truetype(_font_path, max(18, W // 40)) if _font_path else None
+        # 智能选字体：Latin + CJK 配合（避免「CJK 字体不含 ASCII」问题）
+        _latin_path = _pick_latin_font_path()
+        _cjk_path = _pick_cjk_font_path()
+        print("[fb] 字体: latin=%s cjk=%s" % (_latin_path, _cjk_path),
+              flush=True)
+        _big = max(32, W // 22)
+        _sm = max(18, W // 40)
+        _latin_big = ImageFont.truetype(_latin_path, _big) if _latin_path else None
+        _latin_sm = ImageFont.truetype(_latin_path, _sm) if _latin_path else None
+        _cjk_big = ImageFont.truetype(_cjk_path, _big) if _cjk_path else _latin_big
+        _cjk_sm = ImageFont.truetype(_cjk_path, _sm) if _cjk_path else _latin_sm
         _lines = [
             ("fnos-kiosk 启动中", (232, 238, 251)),
             ("正在启动 Chromium（CDP 远程调试）……", (147, 165, 196)),
             ("fb0 = %dx%d @ 32bpp" % (W, H), (147, 165, 196)),
         ]
         for i, (txt, col) in enumerate(_lines):
-            _diag_draw.text((W // 2, H // 3 + i * (H // 7)),
-                            txt, fill=col, font=_font_big, anchor="mm")
-        # 右下角写个时间戳
+            _draw_text_mixed(_diag_draw, (W // 2, H // 3 + i * (H // 7)),
+                             txt, _latin_big, _cjk_big, fill=col, anchor="mm")
+        # 右下角写个时间戳（纯 ASCII，用 Latin 字体）
         _ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _diag_draw.text((W - 16, H - 16), _ts, fill=(60, 80, 110),
-                        font=_font_sm, anchor="rb")
+                        font=_latin_sm, anchor="rb")
         fb.blit(_diag_img.convert("RGBA").tobytes("raw", "BGRA"))
         print("[fb] 启动中屏已写入 fb0（Chromium 还没起来，正在初始化）", flush=True)
     except Exception as e:
@@ -586,47 +700,59 @@ def main():
             from PIL import Image, ImageDraw, ImageFont
             img = Image.new("RGB", (W, H), (40, 10, 10))
             d = ImageDraw.Draw(img)
-            # 智能选字体（扫盘 + fc-list，不依赖硬编码路径）
-            _fp = _pick_cjk_font_path()
-            f_big = ImageFont.truetype(_fp, max(28, W // 24)) if _fp else None
-            f_sm = ImageFont.truetype(_fp, max(18, W // 38)) if _fp else None
+            # 智能选字体：Latin + CJK 配合（核心修复：CJK 字体不含 ASCII 会渲染成 □）
+            _latin_path = _pick_latin_font_path()
+            _cjk_path = _pick_cjk_font_path()
+            _big = max(28, W // 24)
+            _sm = max(18, W // 38)
+            f_l_big = ImageFont.truetype(_latin_path, _big) if _latin_path else None
+            f_l_sm = ImageFont.truetype(_latin_path, _sm) if _latin_path else None
+            f_c_big = ImageFont.truetype(_cjk_path, _big) if _cjk_path else f_l_big
+            f_c_sm = ImageFont.truetype(_cjk_path, _sm) if _cjk_path else f_l_sm
             d.rectangle([(0, 0), (W, H)], outline=(248, 113, 113), width=4)
-            d.text((W // 2, H // 4), title, fill=(248, 113, 113),
-                   font=f_big, anchor="mm")
-            # 错误详情（CJK-aware 换行）
-            wrapped = _wrap_text_cjk(detail, int(W * 0.85), f_sm)
+            _draw_text_mixed(d, (W // 2, H // 4), title,
+                             f_l_big, f_c_big,
+                             fill=(248, 113, 113), anchor="mm")
+            # 错误详情（CJK-aware 换行 + mixed-font 渲染）
+            wrapped = _wrap_text_cjk_mixed(
+                detail, int(W * 0.85), f_l_sm, f_c_sm)
             y0 = int(H * 0.38)
             for i, line in enumerate(wrapped[:6]):
-                d.text((W // 2, y0 + i * (H // 14)), line,
-                       fill=(232, 238, 251), font=f_sm, anchor="mm")
-            # 直接给出修复命令（CJK 字体显示得清楚）
+                _draw_text_mixed(d, (W // 2, y0 + i * (H // 14)), line,
+                                 f_l_sm, f_c_sm,
+                                 fill=(232, 238, 251), anchor="mm")
+            # 直接给出修复命令
             fix1 = "在 NAS 上 SSH 执行："
             fix2 = "sudo apt install -y chromium python3-pil"
-            d.text((W // 2, int(H * 0.78)), fix1,
-                   fill=(245, 158, 11), font=f_sm, anchor="mm")
-            d.text((W // 2, int(H * 0.83)), fix2,
-                   fill=(252, 211, 77), font=f_sm, anchor="mm")
-            d.text((W // 2, int(H * 0.92)),
-                   "安装完成后 fb_render 会自动检测（无需手动重启）",
-                   fill=(147, 165, 196), font=f_sm, anchor="mm")
+            fix3 = "安装完成后 fb_render 会自动检测（无需手动重启）"
+            _draw_text_mixed(d, (W // 2, int(H * 0.78)), fix1,
+                             f_l_sm, f_c_sm,
+                             fill=(245, 158, 11), anchor="mm")
+            _draw_text_mixed(d, (W // 2, int(H * 0.83)), fix2,
+                             f_l_sm, f_c_sm,
+                             fill=(252, 211, 77), anchor="mm")
+            _draw_text_mixed(d, (W // 2, int(H * 0.92)), fix3,
+                             f_l_sm, f_c_sm,
+                             fill=(147, 165, 196), anchor="mm")
             fb.blit(img.convert("RGBA").tobytes("raw", "BGRA"))
         except Exception as ee:
             print("[fb] 写错误屏失败：%r" % ee, flush=True)
 
-    def _wrap_text_cjk(s, max_px, font):
-        """CJK-aware 文本换行：CJK 字符按 2 倍宽度估算。"""
-        if not font or not s:
+    def _wrap_text_cjk_mixed(s, max_px, latin_font, cjk_font):
+        """CJK-aware 文本换行：按实际 getlength 测量（避免 Latin/CJK 估算不准）。"""
+        if not s:
             return [s]
-        out, cur, cur_w = [], "", 0
+        out, cur = [], ""
+        cur_w = 0.0
         for ch in s:
-            # CJK 范围按 2 倍宽度估算（粗略够用）
-            w = 2 if (ord(ch) > 0x2E80 and ord(ch) < 0xFFFF) else 1
-            if cur_w + w > max_px and cur:
+            f = cjk_font if _is_cjk(ch) else latin_font
+            ch_w = f.getlength(ch) if f else (20 if _is_cjk(ch) else 10)
+            if cur_w + ch_w > max_px and cur:
                 out.append(cur)
-                cur, cur_w = ch, w
+                cur, cur_w = ch, ch_w
             else:
                 cur += ch
-                cur_w += w
+                cur_w += ch_w
         if cur:
             out.append(cur)
         return out

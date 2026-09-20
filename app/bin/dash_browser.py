@@ -115,7 +115,8 @@ class WSClient:
     def connect(cls, host, port, path):
         """完成 HTTP Upgrade 握手，返回 WSClient。"""
         sock = socket.create_connection((host, port), timeout=10)
-        key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+        key_bytes = base64.b64encode(secrets.token_bytes(16))
+        key_str = key_bytes.decode("ascii")
         req = (
             "GET %s HTTP/1.1\r\n"
             "Host: %s:%d\r\n"
@@ -124,7 +125,7 @@ class WSClient:
             "Sec-WebSocket-Key: %s\r\n"
             "Sec-WebSocket-Version: 13\r\n"
             "\r\n"
-        ) % (path, host, port, key)
+        ) % (path, host, port, key_str)
         sock.sendall(req.encode("ascii"))
         # 读响应头
         sock.settimeout(10)
@@ -147,7 +148,8 @@ class WSClient:
             if k.strip().lower() == b"sec-websocket-accept":
                 accept = v.strip()
                 break
-        expect = hashlib.sha1((key + WS_GUID).encode()).digest()
+        # 关键修复：key 已是 bytes，直接相加；str + bytes 会报 TypeError
+        expect = hashlib.sha1(key_bytes + WS_GUID).digest()
         if accept != base64.b64encode(expect):
             raise WSError("Sec-WebSocket-Accept 不匹配")
         cli = cls(sock)
