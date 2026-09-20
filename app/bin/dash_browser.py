@@ -357,29 +357,46 @@ class Browser:
 
     # ---- WebSocket ----
     def connect(self, retries=5):
+        """连接到 *page target* 的 WebSocket（不是 browser endpoint）。
+
+        /json/version 返回的是 browser-level endpoint（无 Page.* 域）；
+        /json 返回 target 列表，要挑 type=='page' 的来连，
+        Page.enable / Page.navigate 等方法才可用。
+        """
         last = None
         for _ in range(retries):
             try:
-                resp = urlopen("http://127.0.0.1:%d/json/version" % self.port, timeout=5).read()
-                info = json.loads(resp.decode("utf-8", "replace"))
-                self._ws_url = info.get("webSocketDebuggerUrl", "")
+                resp = urlopen("http://127.0.0.1:%d/json" % self.port,
+                               timeout=5).read()
+                targets = json.loads(resp.decode("utf-8", "replace"))
+                if not isinstance(targets, list) or not targets:
+                    raise RuntimeError("CDP /json 返回空列表")
+                # 优先选 type=='page' 的；about:blank 那条最稳
+                page_target = None
+                for t in targets:
+                    if t.get("type") == "page":
+                        page_target = t
+                        break
+                if page_target is None:
+                    page_target = targets[0]
+                self._ws_url = page_target.get("webSocketDebuggerUrl", "")
                 if not self._ws_url:
-                    raise RuntimeError("CDP /json/version 缺少 webSocketDebuggerUrl")
-                # url 形如 ws://127.0.0.1:9222/devtools/browser/<id>
-                # 我们要的是 page target，connect 后 Page.navigate 等才能用
+                    raise RuntimeError("CDP page target 缺少 webSocketDebuggerUrl")
                 if self._ws_url.startswith("ws://"):
                     rest = self._ws_url[5:]
                 elif self._ws_url.startswith("ws+unix://"):
                     raise RuntimeError("暂不支持 unix socket transport")
                 else:
-                    raise RuntimeError("未知的 WebSocket URL 协议: %s" % self._ws_url[:16])
+                    raise RuntimeError("未知的 WebSocket URL 协议: %s"
+                                       % self._ws_url[:16])
                 host_port, _, path = rest.partition("/")
                 host, _, port = host_port.partition(":")
                 self.ws = WSClient.connect(host, int(port or 9222),
                                            "/" + path)
-                self._reader_th = threading.Thread(target=self._reader, daemon=True)
+                self._reader_th = threading.Thread(target=self._reader,
+                                                   daemon=True)
                 self._reader_th.start()
-                # 启用 Page 域
+                # 启用 Page 域（page target 上 Page.* 才存在）
                 self.call("Page.enable", timeout=5)
                 return
             except Exception as e:
