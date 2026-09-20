@@ -1,0 +1,19 @@
+# Force LF line endings for shell scripts (fnOS is Linux, CRLF breaks bash)
+*.sh      text eol=lf
+cmd/*     text eol=lf
+wizard/*  text eol=lf
+manifest  text eol=lf
+
+# Keep CRLF for Windows users of build tooling
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Treat as binary (no CRLF/LF conversion)
+*.png     binary
+*.jpg     binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+*.fpk     binary
+*.ttf     binary
+*.ttc     binary

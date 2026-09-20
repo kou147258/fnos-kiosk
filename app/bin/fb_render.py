@@ -410,11 +410,17 @@ def main():
     args = ap.parse_args()
 
     # ---- fb 设备 ----
-    try:
-        fb = FB(args.fb)
-    except RuntimeError as e:
-        print("[fb] %s" % e, flush=True)
-        return
+    fb_attempts = 0
+    while True:
+        try:
+            fb = FB(args.fb)
+            break
+        except RuntimeError as e:
+            fb_attempts += 1
+            delay = min(30, 5 * fb_attempts)
+            print("[fb] fb0 初始化失败（#%d，%ds 后重试）：%s"
+                  % (fb_attempts, delay, e), flush=True)
+            time.sleep(delay)
     W, H = fb.w, fb.h
     print("[fb] %dx%d stride=%d" % (W, H, fb.stride), flush=True)
 
@@ -448,30 +454,47 @@ def main():
               flush=True)
         return
 
-    # ---- 启动 Chromium ----
+    # ---- 启动 Chromium（带重试，不退出）----
     log_path = os.path.join(os.path.dirname(args.fb) or ".", "fb_chromium.log")
     # var 目录一般是 /var/apps/<pkg>/var；fb.log 旁写
     var_log = os.environ.get("TRIM_PKGVAR")
     if var_log:
         log_path = os.path.join(var_log, "fb_chromium.log")
-    browser = Browser(
-        window=(win_w, win_h),
-        port=args.cdp_port,
-        chromium_path=cfg.get("browser_path", ""),
-        scale=float(cfg.get("browser_scale", 1.0)),
-        timeout=int(cfg.get("browser_timeout", 30)),
-        hide_cursor=bool(cfg.get("hide_cursor", True)),
-        # profile_dir：留空用 var/chromium-profile（持久登录态）
-        user_data_dir=default_profile,
-    )
-    try:
-        browser.start(log_path=log_path)
-        browser.connect()
-        print("[fb] Chromium ready (window=%dx%d)" % (win_w, win_h), flush=True)
-    except Exception as e:
-        print("[fb] Chromium 启动失败：%r" % e, flush=True)
-        fb.close()
-        return
+
+    def _spawn_browser(cfg_):
+        return Browser(
+            window=(win_w, win_h),
+            port=args.cdp_port,
+            chromium_path=cfg_.get("browser_path", ""),
+            scale=float(cfg_.get("browser_scale", 1.0)),
+            timeout=int(cfg_.get("browser_timeout", 30)),
+            hide_cursor=bool(cfg_.get("hide_cursor", True)),
+            user_data_dir=default_profile,
+        )
+
+    # Chromium 启动重试：backoff 5s → 10s → 20s → 30s 上限
+    _retry_delays = [5, 10, 20, 30]
+    browser = _spawn_browser(cfg)
+    while True:
+        try:
+            browser.start(log_path=log_path)
+            browser.connect()
+            print("[fb] Chromium ready (window=%dx%d)" % (win_w, win_h),
+                  flush=True)
+            break
+        except Exception as e:
+            delay = _retry_delays[min(main._spawn_attempts, len(_retry_delays) - 1)] \
+                if hasattr(main, "_spawn_attempts") else 5
+            main._spawn_attempts = getattr(main, "_spawn_attempts", 0) + 1
+            print("[fb] Chromium 启动失败（#%d，将在 %ds 后重试）：%r"
+                  % (main._spawn_attempts, delay, e), flush=True)
+            try:
+                browser.close()
+            except Exception:
+                pass
+            time.sleep(delay)
+            browser = _spawn_browser(cfg)
+    main._spawn_attempts = 0
 
     # ---- 本地页面存储（fb 渲染器也要读 var/pages/）----
     pages_root = args.pages_dir or os.path.join(
@@ -565,33 +588,45 @@ def main():
                 time.sleep(1.0)
                 continue
 
-            # 如果 Chromium 死了，尝试重启（带 circuit breaker）
+            # 如果 Chromium 死了，尝试重启（一直重试，配合外层 watchdog）
             if not browser.alive():
-                if not getattr(main, "_restart_attempts", None):
+                main._restart_attempts = getattr(main, "_restart_attempts", 0)
+                main._restart_attempts += 1
+                delay = min(30, 2 * main._restart_attempts)
+                print("[fb] Chromium 不在，重启尝试 #%d（%ds 后）"
+                      % (main._restart_attempts, delay), flush=True)
+                try:
+                    # 重建 Browser 实例（start_new_session 后的旧 Chromium 已死透）
+                    browser = Browser(
+                        window=(win_w, win_h),
+                        port=args.cdp_port,
+                        chromium_path=cfg.get("browser_path", ""),
+                        scale=float(cfg.get("browser_scale", 1.0)),
+                        timeout=int(cfg.get("browser_timeout", 30)),
+                        hide_cursor=bool(cfg.get("hide_cursor", True)),
+                        user_data_dir=default_profile,
+                    )
+                    browser.start(log_path=log_path)
+                    browser.connect()
+                    canvas = BrowserCanvas(W, H, browser, page_store)
+                    canvas.set_page(pages[0] if pages else None)
                     main._restart_attempts = 0
-                if main._restart_attempts < 5:
-                    main._restart_attempts += 1
-                    print("[fb] Chromium 不在，重启尝试 #%d" %
-                          main._restart_attempts, flush=True)
+                except Exception as e:
+                    print("[fb] 重启失败：%r" % e, flush=True)
+                    # 画错误屏给用户看到（fb0 上能看到排查线索）
                     try:
-                        browser.start(log_path=log_path)
-                        browser.connect()
-                        canvas = BrowserCanvas(W, H, browser, page_store)
-                    except Exception as e:
-                        print("[fb] 重启失败：%r" % e, flush=True)
-                        time.sleep(2)
-                        continue
-                else:
-                    # 多次失败，画错误屏
-                    canvas.img.paste(pal["bg"], [0, 0, W, H])
-                    from PIL import ImageDraw
-                    ImageDraw.Draw(canvas.img).text((20, 20),
-                                                    "Chromium 持续启动失败，请检查 /var/apps/com.fnos.kiosk/var/fb_chromium.log",
-                                                    fill=pal["danger"])
-                    fb.blit(canvas.to_bgra(rotate))
-                    time.sleep(5)
+                        canvas.img.paste(pal["bg"], [0, 0, W, H])
+                        from PIL import ImageDraw
+                        ImageDraw.Draw(canvas.img).text(
+                            (20, 20),
+                            "Chromium 启动失败（#%d）：%s\n请检查 /var/apps/com.fnos.kiosk/var/fb_chromium.log"
+                            % (main._restart_attempts, str(e)[:60]),
+                            fill=pal["danger"])
+                        fb.blit(canvas.to_bgra(rotate))
+                    except Exception:
+                        pass
+                    time.sleep(delay)
                     continue
-            main._restart_attempts = 0
 
             # 切换页面时刷新 canvas 目标
             if getattr(canvas, "_page", None) is None or \

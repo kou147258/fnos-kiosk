@@ -1,5 +1,5 @@
 #!/bin/bash
-# fnOS 浏览器屏 —— 启停与状态检查（Web 服务 + 显示器渲染进程）
+# fnOS 浏览器屏 —— 启停与状态检查（Web 服务 + 显示器渲染进程 + 自愈 watchdog）
 APP_NAME="${TRIM_APPNAME:-com.fnos.kiosk}"
 APP_DIR="${TRIM_APPDEST:-/var/apps/${APP_NAME}}"
 APP_BIN="${APP_DIR}/bin/dashboard.py"
@@ -9,9 +9,13 @@ VAR_DIR="${TRIM_PKGVAR:-/var/apps/${APP_NAME}/var}"
 ETC_DIR="${TRIM_PKGETC:-/var/apps/${APP_NAME}/etc}"
 PID_FILE="${VAR_DIR}/app.pid"
 FB_PID_FILE="${VAR_DIR}/fb.pid"
+WD_PID_FILE="${VAR_DIR}/wd.pid"
 LOG_FILE="${VAR_DIR}/app.log"
 FB_LOG_FILE="${VAR_DIR}/fb.log"
-PORT="${TRIM_SERVICE_PORT:-8200}"
+WD_LOG_FILE="${VAR_DIR}/wd.log"
+# 端口默认 8280（v0.1.1 起避开 MiniDLNA 占用的 8200）。
+# fnOS 注入 TRIM_SERVICE_PORT 时以注入值为准；此处只在极少数上下文未注入时兜底。
+PORT="${TRIM_SERVICE_PORT:-8280}"
 CFG_FILE="${ETC_DIR}/config.json"
 
 # 声明了 install_dep_apps=python312 作兜底：系统 python3（含 python3-pil）优先
@@ -91,13 +95,85 @@ start_fb() {
         return 0
     fi
     if ! fb_runnable; then
-        echo "显示器模式已开启，但 /dev/fb0 不可读写（需安装时的 udev 规则或 video 组权限）" \
-            >> "$FB_LOG_FILE" 2>/dev/null || true
+        echo "[$(date '+%m-%d %H:%M:%S')] /dev/fb0 不可读写，跳过渲染进程" >> "$FB_LOG_FILE" 2>/dev/null || true
         return 0
     fi
     nohup python3 "$FB_BIN" --fb /dev/fb0 --api "http://127.0.0.1:${PORT}" \
         >> "$FB_LOG_FILE" 2>&1 &
     echo $! > "$FB_PID_FILE"
+    return 0
+}
+
+# 生成独立的 watchdog 脚本并启动它。
+# watchdog 子进程不能继承父 shell 的函数定义，所以走独立脚本路径。
+start_watchdog() {
+    if check_pid "$WD_PID_FILE"; then
+        return 0
+    fi
+    local wd_script="${VAR_DIR}/wd.sh"
+    cat > "$wd_script" <<WDSCRIPT
+#!/bin/bash
+# fnos-kiosk watchdog —— 由 cmd/main 部署到 var/ 目录，独立运行。
+# 周期性检查 fb_render 进程；死了自动拉起。
+FB_BIN="${FB_BIN}"
+FB_PID_FILE="${FB_PID_FILE}"
+FB_LOG_FILE="${FB_LOG_FILE}"
+WD_PID_FILE="${WD_PID_FILE}"
+WD_LOG_FILE="${WD_LOG_FILE}"
+CFG_FILE="${CFG_FILE}"
+PORT="${PORT}"
+
+alive_quiet() {
+    [ -f "\$FB_PID_FILE" ] || return 1
+    local pid
+    pid=\$(cat "\$FB_PID_FILE" 2>/dev/null | tr -d '[:space:]')
+    [ -n "\$pid" ] && kill -0 "\$pid" 2>/dev/null
+}
+
+fb_enabled_quiet() {
+    [ -f "\$CFG_FILE" ] || return 1
+    [ -e /dev/fb0 ] || return 1
+    python3 -c "
+import json, sys
+try:
+    cfg = json.load(open('\$CFG_FILE'))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if cfg.get('fb_enabled') else 1)
+" 2>/dev/null
+}
+
+fb_runnable_quiet() {
+    [ -r /dev/fb0 ] && [ -w /dev/fb0 ]
+}
+
+start_fb_quiet() {
+    if ! fb_runnable_quiet; then return 0; fi
+    if alive_quiet; then return 0; fi
+    nohup python3 "\$FB_BIN" --fb /dev/fb0 --api "http://127.0.0.1:\${PORT}" \
+        >> "\$FB_LOG_FILE" 2>&1 &
+    echo \$! > "\$FB_PID_FILE"
+    echo "[\$(date '+%m-%d %H:%M:%S')] watchdog: 已重新拉起 fb_render (pid=\$!)" >> "\$WD_LOG_FILE" 2>/dev/null || true
+}
+
+# 主循环：每 5 秒检查一次；自身 pid 文件被删则退出
+while true; do
+    if [ ! -f "\$WD_PID_FILE" ]; then
+        exit 0
+    fi
+    sleep 5
+    if ! fb_enabled_quiet; then
+        continue
+    fi
+    if ! alive_quiet; then
+        echo "[\$(date '+%m-%d %H:%M:%S')] watchdog: 检测到 fb_render 死亡" >> "\$WD_LOG_FILE" 2>/dev/null || true
+        start_fb_quiet
+    fi
+done
+WDSCRIPT
+    chmod +x "$wd_script"
+    nohup "$wd_script" >> "$WD_LOG_FILE" 2>&1 &
+    echo $! > "$WD_PID_FILE"
     return 0
 }
 
@@ -126,10 +202,14 @@ case $1 in
 start)
     start_backend || exit 1
     start_fb
+    start_watchdog
     ;;
 stop)
+    # 先停 watchdog（删 wd.pid 让它自己退出），再停 fb_render / dashboard
+    stop_pid "$WD_PID_FILE"
     stop_pid "$FB_PID_FILE"
     stop_pid "$PID_FILE"
+    rm -f "${VAR_DIR}/wd.sh"
     rm -f "${APP_DIR}/app.sock"
     ;;
 status)

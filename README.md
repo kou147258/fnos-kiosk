@@ -73,6 +73,14 @@ Chromium 直接渲染图片 / 自动播放视频 → fb0 输出到屏幕。
 URL 默认禁止内网主机（防 SSRF）。如需访问 192.168 等内网服务，
 在「高级」→ 勾选「允许内网主机」。
 
+### 4.5 拖拽上传（即时显示）
+
+把任意 **图片 / 视频 / HTML 文件**直接拖到设置页任意位置 → 自动上传到 NAS + 注册为单 URL 全屏页面 → 立即显示到副屏。
+
+> 多文件一起拖：按文件名排序，最后一个为 `mode=single` 独占全屏，其余为 `mode=cycle` 加入轮换。
+
+支持的扩展名：PNG / JPG / GIF / WebP / SVG / BMP / ICO / MP4 / WebM / Ogg / Mov / HTML。单文件 ≤ 16 MB。
+
 ### 5. 登录态持久化
 
 默认情况下，Chromium 的 profile 存在 `var/chromium-profile/`。这意味着：
@@ -160,6 +168,27 @@ export KIOSK_CDP_PORT=10523  # 默认 = service_port + 1023
 
 ---
 
+### 🛡 渲染进程自愈（v0.1.5 起）
+
+**问题**：早期版本里如果 Chromium 启动失败（比如刚启动时 profile 还没就绪、
+`chromium` 还没装、CDP 端口被占），`fb_render.py` 会直接 `return` 退出，显示器就一直黑屏。
+
+**现在的行为**：
+
+| 失败场景 | 旧版 | v0.1.5+ |
+|---|---|---|
+| Chromium 启动失败 | 进程退出 → 黑屏 | `fb_render` 内部指数退避重试（5s → 10s → 20s → 30s），不死循环 |
+| `fb_render.py` 崩溃 | 不重启 | `cmd/main` 部署的 watchdog 进程每 5s 检测一次，死了自动拉起 |
+| `/dev/fb0` 暂时不可读 | 进程退出 | `fb_render` 内部重试，fb0 出现后立即接管 |
+| 任何进程死亡 | fnOS 不知道 | watchdog 把日志写到 `var/wd.log`，设置页可查看 |
+
+排障入口（设置页 → 显示 tab）：
+
+- **🔄 手动重启渲染进程** —— 一键 `POST /api/fb/restart`
+- **📋 查看 fb.log** —— 末尾 100 行，排障 Chromium 启动错误
+
+---
+
 ## 📐 架构
 
 ```
@@ -206,6 +235,8 @@ export KIOSK_CDP_PORT=10523  # 默认 = service_port + 1023
 | `/api/auth/reset` | POST | **127.0.0.1** | 清登录态（保留 Preferences） |
 | `/api/fb/info` | GET | **127.0.0.1** | fb0 状态 + 渲染进程 PID |
 | `/api/fb/dump.png` | GET | **127.0.0.1** | 帧缓冲实时预览 PNG |
+| `/api/fb/restart` | POST | **127.0.0.1** | 手动重建 fb_render（v0.1.5+） |
+| `/api/fb/log` | GET | **127.0.0.1** | fb.log 末尾 100 行（v0.1.5+） |
 
 ---
 
@@ -301,7 +332,8 @@ python3 tools/pack_fpk.py
 
 | 版本 | 重点 |
 |---|---|
-| **Latest** | 见 [Releases](https://github.com/kou147258/fnos-kiosk/releases) |
+| **v0.1.5** | 渲染进程自愈（watchdog + 内部重试）；拖拽上传即时显示；`/api/fb/restart` & `/api/fb/log` 诊断接口；修复 cmd/main 端口兜底 8200 → 8280；修复所有 shell 脚本 CRLF 换行 |
+| v0.1.4 | 清理 manifest / README 的 GBK 编码乱码；changelog 补全历史 |
 | v0.1.3 | 全部 8200 残留清理（argparse 默认 / 文档示例 / CLI 帮助文本） |
 | v0.1.2 | CGI 反代端口解析修复（`index.cgi` 不再硬编码 8200） |
 | v0.1.1 | 默认 HTTP 端口 8200 → 8280（避开部分 NAS 自带 MiniDLNA 占用） |

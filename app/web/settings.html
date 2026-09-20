@@ -51,6 +51,11 @@
         <h3>显示器输出</h3>
         <div class="toggle-row big"><span>启用显示器显示</span><input type="checkbox" id="set-fb"></div>
         <div id="fb-info" class="fb-info">读取中…</div>
+        <div class="row-2">
+          <button id="btn-fb-restart" class="btn-mini">🔄 手动重启渲染进程</button>
+          <button id="btn-fb-log" class="btn-mini">📋 查看 fb.log</button>
+        </div>
+        <pre id="fb-log" class="hint fb-log-pre hidden"></pre>
         <p class="hint">当前占用端口：HTTP API <code id="port-http">—</code>，Chromium 远程调试 <code id="port-cdp">—</code>。两者均绑定 127.0.0.1（仅本机访问）。如需更换 CDP 端口，在启动 fb_render 前设置环境变量 <code>KIOSK_CDP_PORT=&lt;port&gt;</code>。</p>
         <h3>显示方向</h3>
         <div class="seg" id="seg-rotate">
@@ -224,6 +229,16 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
+
+<!-- ============ 拖拽上传覆盖层 ============ -->
+<div id="drop-overlay" class="drop-overlay hidden">
+  <div class="drop-inner">
+    <div class="drop-icon">📥</div>
+    <div class="drop-title">松开即可上传到 NAS 副屏</div>
+    <div class="drop-hint">支持 图片（PNG/JPG/GIF/WebP/SVG/BMP/ICO）· 视频（MP4/WebM/Ogg/Mov）· HTML</div>
+    <div class="drop-hint">单文件 ≤ 16 MB</div>
+  </div>
+</div>
 
 <script src="assets/settings.js"></script>
 </body>

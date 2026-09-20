@@ -496,6 +496,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, png, ctype="image/png")
             return
+        if path == "/api/fb/log":
+            # 返回 fb.log 末尾 100 行（排障用）
+            log_path = os.path.join(self.var_dir, "fb.log")
+            lines = []
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()[-100:]
+            except OSError:
+                pass
+            self._send_json(200, {"ok": True, "log": "".join(lines)})
+            return
 
         rel = path if path != "/" else "/index.html"
         self._serve_static(rel)
@@ -557,5 +568,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/auth/reset":
             self._send_json(200, self._auth_reset())
+            return
+        if path == "/api/fb/restart":
+            # 手动强制重建 fb_render 进程（用于拖拽新文件后立即显示 / 排障）
+            self._fb_restart()
+            self._send_json(200, {"ok": True,
+                                  "msg": "已重启渲染进程（约 2-3 秒后生效）"})
             return
         self._send_json(405, {"ok": False, "error": "Method Not Allowed"})

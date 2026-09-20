@@ -253,6 +253,29 @@ document.getElementById("btn-auth-reset").addEventListener("click", function () 
     .catch(function (e) { toast(e.message || "重置失败", true); });
 });
 
+document.getElementById("btn-fb-restart").addEventListener("click", function () {
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = "重启中…";
+  api("POST", "api/fb/restart", {})
+    .then(function (j) { toast(j.msg || "已重启"); loadFbInfo(); })
+    .catch(function (e) { toast(e.message || "重启失败", true); })
+    .then(function () { btn.disabled = false; btn.textContent = "🔄 手动重启渲染进程"; });
+});
+
+document.getElementById("btn-fb-log").addEventListener("click", function () {
+  var el = document.getElementById("fb-log");
+  if (!el) return;
+  if (el.classList.contains("hidden")) {
+    api("GET", "api/fb/log").then(function (j) {
+      el.textContent = j.log || "（无日志）";
+      el.classList.remove("hidden");
+    }).catch(function (e) { toast(e.message || "读取失败", true); });
+  } else {
+    el.classList.add("hidden");
+  }
+});
+
 document.getElementById("btn-login-help").addEventListener("click", function () {
   var h = document.getElementById("login-help");
   if (h) h.classList.toggle("hidden");
@@ -367,44 +390,176 @@ document.getElementById("btn-local-upload").addEventListener("click", function (
   if (!fi.files || !fi.files.length) {
     return toast("请先选择文件", true);
   }
-  var f = fi.files[0];
-  // 文件名清理：保留扩展名，做白名单校验
-  var name = overrideName || f.name;
-  // 简单客户端校验（服务端也会再校验）
-  var allowed = /\.(html?|svg|jpg|jpeg|png|gif|webp|bmp|ico|mp4|webm|ogg|mov)$/i;
-  if (!allowed.test(name)) {
-    return toast("不支持的文件类型：" + name, true);
-  }
-  if (f.size > 16 * 1024 * 1024) {
-    return toast("文件超过 16MB 上限", true);
-  }
-  state.textContent = "读取中…";
-  var reader = new FileReader();
-  reader.onload = function () {
-    // reader.result 形如 "data:image/png;base64,xxxxx"
-    var b64 = String(reader.result).split(",", 2)[1];
-    state.textContent = "上传中…";
-    api("POST", "api/pages/save",
-        { name: name, content: b64, encoding: "base64" })
-      .then(function () {
-        state.textContent = "✓ " + name + " (" +
-          (f.size / 1024).toFixed(1) + " KB)";
-        toast("已上传 " + name);
-        fi.value = "";
-        document.getElementById("local-upload-name").value = "";
-        loadLocalFiles();
-      })
-      .catch(function (e) {
-        state.textContent = "✗ 上传失败";
-        toast(e.message || "上传失败", true);
-      });
-  };
-  reader.onerror = function () {
-    state.textContent = "✗ 读取失败";
-    toast("读取文件失败", true);
-  };
-  reader.readAsDataURL(f);
+  uploadFile(fi.files[0], overrideName, state).then(function (ok) {
+    if (ok) {
+      fi.value = "";
+      document.getElementById("local-upload-name").value = "";
+      loadLocalFiles();
+    }
+  });
 });
+
+// ---------- 上传核心（按钮 + 拖拽共用） ----------
+var _ALLOWED_RE = /\.(html?|svg|jpg|jpeg|png|gif|webp|bmp|ico|mp4|webm|ogg|mov)$/i;
+var _ALLOWED_KINDS = { html: "html_file", image: "media_file", video: "media_file" };
+
+function classifyExt(name) {
+  var m = /\.([a-z0-9]+)$/i.exec(name || "");
+  var ext = (m && m[1].toLowerCase()) || "";
+  if (["html", "htm", "svg"].indexOf(ext) >= 0) return { kind: "html", type: "html_file" };
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico"].indexOf(ext) >= 0)
+    return { kind: "image", type: "media_file" };
+  if (["mp4", "webm", "ogg", "mov"].indexOf(ext) >= 0)
+    return { kind: "video", type: "media_file" };
+  return null;
+}
+
+function uploadFile(file, overrideName, stateEl) {
+  var name = overrideName || file.name;
+  if (!_ALLOWED_RE.test(name)) {
+    toast("不支持的文件类型：" + name, true);
+    return Promise.resolve(false);
+  }
+  if (file.size > 16 * 1024 * 1024) {
+    toast("文件超过 16MB 上限：" + name, true);
+    return Promise.resolve(false);
+  }
+  if (stateEl) stateEl.textContent = "读取中…";
+  return new Promise(function (resolve) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var b64 = String(reader.result).split(",", 2)[1];
+      if (stateEl) stateEl.textContent = "上传中…";
+      api("POST", "api/pages/save",
+          { name: name, content: b64, encoding: "base64" })
+        .then(function () {
+          if (stateEl) stateEl.textContent = "✓ " + name + " (" +
+            (file.size / 1024).toFixed(1) + " KB)";
+          resolve({ ok: true, name: name, size: file.size });
+        })
+        .catch(function (e) {
+          if (stateEl) stateEl.textContent = "✗ 上传失败";
+          toast(e.message || "上传失败", true);
+          resolve({ ok: false, name: name });
+        });
+    };
+    reader.onerror = function () {
+      if (stateEl) stateEl.textContent = "✗ 读取失败";
+      toast("读取文件失败", true);
+      resolve({ ok: false, name: name });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// 上传后立即把页面注册到 cfg.pages 并保存 → 显示屏立即显示
+function registerAndDisplay(result, mode) {
+  if (!result.ok) return;
+  var info = classifyExt(result.name);
+  if (!info) return;
+  var page = {
+    id: "page" + Date.now().toString(36).slice(-4) + Math.floor(Math.random()*1000),
+    name: result.name,
+    type: info.type,
+    path: result.name,
+    mode: mode || "single",
+    refresh_seconds: 0,
+    zoom: 1.0,
+    enabled: true,
+  };
+  // 移除同名旧页面（避免重复显示）
+  cfg.pages = (cfg.pages || []).filter(function (p) { return p.name !== result.name && p.path !== result.name; });
+  // single 模式：放在最前面；如果一次拖多个，只有最后一个保留 single，其它转 cycle
+  if (page.mode === "single") {
+    cfg.pages.unshift(page);
+  } else {
+    cfg.pages.push(page);
+  }
+  cfg.default_mode = page.mode === "single" ? "single" : (cfg.default_mode || "cycle");
+}
+
+// ---------- 拖拽上传（直接到显示屏） ----------
+var _dropOverlay = null;
+var _dropDepth = 0;
+
+function _showDrop() {
+  if (!_dropOverlay) _dropOverlay = document.getElementById("drop-overlay");
+  if (_dropOverlay) _dropOverlay.classList.remove("hidden");
+}
+function _hideDrop() {
+  if (!_dropOverlay) _dropOverlay = document.getElementById("drop-overlay");
+  if (_dropOverlay) _dropOverlay.classList.add("hidden");
+}
+
+function _attachDragDrop() {
+  // dragenter/dragleave 用 depth counter：子元素反复触发也能正确显示
+  document.addEventListener("dragenter", function (e) {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+    e.preventDefault();
+    _dropDepth++;
+    _showDrop();
+  });
+  document.addEventListener("dragover", function (e) {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  document.addEventListener("dragleave", function (e) {
+    _dropDepth = Math.max(0, _dropDepth - 1);
+    if (_dropDepth === 0) _hideDrop();
+  });
+  document.addEventListener("drop", function (e) {
+    if (!e.dataTransfer) return;
+    e.preventDefault();
+    _dropDepth = 0;
+    _hideDrop();
+    var files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    handleDroppedFiles(files);
+  });
+}
+
+function handleDroppedFiles(files) {
+  // 按文件名排序，避免 single 模式下顺序错乱
+  files.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  var valid = files.filter(function (f) { return _ALLOWED_RE.test(f.name); });
+  var rejected = files.length - valid.length;
+  if (rejected > 0) {
+    toast(rejected + " 个文件类型不支持，已跳过", true);
+  }
+  if (!valid.length) return;
+
+  toast("正在上传 " + valid.length + " 个文件…");
+  // 串行上传，避免一次性 base64 大块请求
+  var chain = Promise.resolve();
+  var lastResult = null;
+  valid.forEach(function (f, idx) {
+    chain = chain.then(function () {
+      // 最后一个文件（按文件名排序）设为 single；其他为 cycle
+      var mode = (idx === valid.length - 1) ? "single" : "cycle";
+      return uploadFile(f, "", null).then(function (r) {
+        if (r && r.ok) {
+          registerAndDisplay({ ok: true, name: r.name }, mode);
+          lastResult = r;
+        }
+      });
+    });
+  });
+  chain.then(function () {
+    if (lastResult) {
+      // 立即保存配置 + 触发渲染器拉取新页面
+      return api("POST", "api/settings", cfg).then(function (j) {
+        cfg = j.config;
+        renderPageList();
+        loadLocalFiles();
+        loadFbInfo();
+        toast("✓ 已上传并显示：" + lastResult.name);
+      }).catch(function (e) { toast(e.message || "保存失败", true); });
+    }
+  });
+}
+
+_attachDragDrop();
 
 // ---------- 保存 ----------
 function bindConfig() {
