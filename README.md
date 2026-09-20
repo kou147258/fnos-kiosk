@@ -120,12 +120,12 @@ python3 app/bin/dashboard.py --port 8200 --web app/web
 
 | 端口 | 默认 | 作用 | 改法 |
 |---|---|---|---|
-| **HTTP API** | `8200` | 后端服务（前端面板 / 设置页 / CGI 反代目标） | 编辑 `manifest` 的 `service_port=`，重新 `fnpack pack` 即可 |
-| **CDP 远程调试** | `9223`（= HTTP 端口 + 1023） | Chromium DevTools Protocol；fb 渲染器通过它导航/截屏 | 设环境变量 `KIOSK_CDP_PORT=<其他端口>` 后重启 FPK；或在 `cmd/main` 启动前注入 |
+| **HTTP API** | `8280` | 后端服务（前端面板 / 设置页 / CGI 反代目标） | 编辑 `manifest` 的 `service_port=`，重新 `fnpack build` 即可 |
+| **CDP 远程调试** | `10303`（= HTTP 端口 + 1023） | Chromium DevTools Protocol；fb 渲染器通过它导航/截屏 | 设环境变量 `KIOSK_CDP_PORT=<其他端口>` 后重启 FPK；或在 `cmd/main` 启动前注入 |
 
 ### 不冲突的理由
 
-- fnOS 系统核心口：80 / 443 / 5666 / 5667 / 22 / 8000（已弃用）/ 8001（已弃用）—— 都不在 8200 / 9223
+- fnOS 系统核心口：80 / 443 / 5666 / 5667 / 22 / 8000（已弃用）/ 8001（已弃用）—— 都不在 8280
 - fnos-dashboard：8199 —— 错开 +1
 - 其他 FPK 应用各自声明 `service_port`，fnOS 安装时 `checkport=true` 实测空闲——撞车会拒绝安装
 - HTTP API 与 CDP 都绑定 127.0.0.1（`--remote-debugging-address=127.0.0.1`），不对外暴露
@@ -134,13 +134,13 @@ python3 app/bin/dashboard.py --port 8200 --web app/web
 
 ```bash
 # 编辑 manifest
-sed -i 's/service_port=8200/service_port=9500/' manifest
+sed -i 's/service_port=8280/service_port=9500/' manifest
 # 重新打包
 ./build.sh && fnpack pack .
 ```
 
 `fb_render.py` 默认通过 `TRIM_SERVICE_PORT` 环境变量读取 fnOS 注入的端口号，
-运行时不再硬编码 8200。
+运行时不再硬编码 8280。
 
 ### 想换 CDP 端口（罕见）？
 

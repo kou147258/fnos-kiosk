@@ -260,8 +260,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             log = open(log_path, "ab")
             # CDP 端口优先从环境变量 KIOSK_CDP_PORT 取，否则用 service_port + 1023
-            # （service_port=8200 → CDP=9223；service_port=9500 → CDP=10523）。
-            # 这是为了让 service_port 改了之后 CDP 端口自动跟着变，不会撞 9223。
+            # （service_port=8280 → CDP=10303；service_port=9500 → CDP=10523）。
+            # 这是为了让 service_port 改了之后 CDP 端口自动跟着变。
             try:
                 cdp_port = int(os.environ.get("KIOSK_CDP_PORT") or (port + 1023))
             except (TypeError, ValueError):
