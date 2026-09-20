@@ -432,19 +432,20 @@ def main():
         _diag_img = Image.new("RGB", (W, H), (10, 19, 34))
         _diag_draw = ImageDraw.Draw(_diag_img)
         _font_path = None
-        for _fp in (FONT_LATIN_CANDIDATES + FONT_CJK_CANDIDATES):
+        # 优先用 CJK 字体（启动屏里有中文）
+        for _fp in FONT_CJK_CANDIDATES + FONT_LATIN_CANDIDATES:
             if os.path.exists(_fp):
                 _font_path = _fp
                 break
-        _font_big = ImageFont.truetype(_font_path, max(28, W // 24)) if _font_path else None
-        _font_sm = ImageFont.truetype(_font_path, max(16, W // 40)) if _font_path else None
+        _font_big = ImageFont.truetype(_font_path, max(32, W // 22)) if _font_path else None
+        _font_sm = ImageFont.truetype(_font_path, max(18, W // 40)) if _font_path else None
         _lines = [
             ("fnos-kiosk 启动中", (232, 238, 251)),
-            ("正在拉取 Chromium 截图……", (147, 165, 196)),
+            ("正在启动 Chromium（CDP 远程调试）……", (147, 165, 196)),
             ("fb0 = %dx%d @ 32bpp" % (W, H), (147, 165, 196)),
         ]
         for i, (txt, col) in enumerate(_lines):
-            _diag_draw.text((W // 2, H // 3 + i * (H // 8)),
+            _diag_draw.text((W // 2, H // 3 + i * (H // 7)),
                             txt, fill=col, font=_font_big, anchor="mm")
         # 右下角写个时间戳
         _ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -503,45 +504,60 @@ def main():
             user_data_dir=default_profile,
         )
 
-    # Chromium 启动重试：backoff 5s → 10s → 20s → 30s 上限
-    # 每次失败时往 fb0 写一个错误屏（用户能直接看到排查线索）
-    _retry_delays = [5, 10, 20, 30]
+    # Chromium 启动重试：backoff 5s → 10s → 15s 上限（用户装好 chromium 后
+    # 最多等 15s 就能看到画面，不需要等 30s）
+    _retry_delays = [5, 10, 15]
 
     def _write_error_screen(title, detail):
         try:
             from PIL import Image, ImageDraw, ImageFont
             img = Image.new("RGB", (W, H), (40, 10, 10))
             d = ImageDraw.Draw(img)
+            # 强制使用 CJK 字体（错误屏里大量中文，Latin 字体会显示空白）
             _fp = None
-            for _p in (FONT_LATIN_CANDIDATES + FONT_CJK_CANDIDATES):
+            for _p in FONT_CJK_CANDIDATES + FONT_LATIN_CANDIDATES:
                 if os.path.exists(_p):
                     _fp = _p
                     break
-            f_big = ImageFont.truetype(_fp, max(24, W // 28)) if _fp else None
-            f_sm = ImageFont.truetype(_fp, max(14, W // 50)) if _fp else None
+            f_big = ImageFont.truetype(_fp, max(28, W // 24)) if _fp else None
+            f_sm = ImageFont.truetype(_fp, max(18, W // 38)) if _fp else None
             d.rectangle([(0, 0), (W, H)], outline=(248, 113, 113), width=4)
-            d.text((W // 2, H // 3), title, fill=(248, 113, 113),
+            d.text((W // 2, H // 4), title, fill=(248, 113, 113),
                    font=f_big, anchor="mm")
-            # 错误详情（截断到屏幕宽度内）
-            for i, line in enumerate(_wrap_text(detail, W // 12, f_sm)[:6]):
-                d.text((W // 2, H // 2 + i * (H // 18)), line,
+            # 错误详情（CJK-aware 换行）
+            wrapped = _wrap_text_cjk(detail, int(W * 0.85), f_sm)
+            y0 = int(H * 0.38)
+            for i, line in enumerate(wrapped[:6]):
+                d.text((W // 2, y0 + i * (H // 14)), line,
                        fill=(232, 238, 251), font=f_sm, anchor="mm")
-            d.text((W // 2, int(H * 0.85)),
-                   "查看详细日志：设置 → 显示 → 📋 查看 fb.log",
+            # 直接给出修复命令（CJK 字体显示得清楚）
+            fix1 = "在 NAS 上 SSH 执行："
+            fix2 = "sudo apt install -y chromium python3-pil"
+            d.text((W // 2, int(H * 0.78)), fix1,
                    fill=(245, 158, 11), font=f_sm, anchor="mm")
+            d.text((W // 2, int(H * 0.83)), fix2,
+                   fill=(252, 211, 77), font=f_sm, anchor="mm")
+            d.text((W // 2, int(H * 0.92)),
+                   "安装完成后 fb_render 会自动检测（无需手动重启）",
+                   fill=(147, 165, 196), font=f_sm, anchor="mm")
             fb.blit(img.convert("RGBA").tobytes("raw", "BGRA"))
         except Exception as ee:
             print("[fb] 写错误屏失败：%r" % ee, flush=True)
 
-    def _wrap_text(s, max_px, font):
+    def _wrap_text_cjk(s, max_px, font):
+        """CJK-aware 文本换行：CJK 字符按 2 倍宽度估算。"""
         if not font or not s:
             return [s]
-        out, cur = [], ""
+        out, cur, cur_w = [], "", 0
         for ch in s:
-            cur += ch
-            if font.getlength(cur) > max_px:
-                out.append(cur[:-1])
-                cur = ch
+            # CJK 范围按 2 倍宽度估算（粗略够用）
+            w = 2 if (ord(ch) > 0x2E80 and ord(ch) < 0xFFFF) else 1
+            if cur_w + w > max_px and cur:
+                out.append(cur)
+                cur, cur_w = ch, w
+            else:
+                cur += ch
+                cur_w += w
         if cur:
             out.append(cur)
         return out
