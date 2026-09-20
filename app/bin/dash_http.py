@@ -102,7 +102,7 @@ def fb_restart_needed(prev, cur):
     return any(prev.get(k) != cur.get(k)
                for k in ("fb_enabled", "fb_rotate", "screen_inches",
                          "browser_path", "browser_window", "browser_scale",
-                         "browser_timeout", "hide_cursor"))
+                         "browser_timeout", "hide_cursor", "display_zoom"))
 
 
 class Handler(BaseHTTPRequestHandler):
