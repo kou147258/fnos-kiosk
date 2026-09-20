@@ -97,6 +97,7 @@ DEFAULT_CONFIG = {
     "fb_enabled": False,
     "fb_rotate": 0,
     "display_fit": "contain",
+    "display_zoom": 1.0,       # URL 页面缩放（1.0=原始，>1 放大（页面 CSS 像素更少 → 内容看起来更大），<1 缩小）
     "screen_inches": 0,
     "browser_path": "",        # 自定义 chromium 路径（空则自动找）
     "browser_window": "match_fb",   # 浏览器视口尺寸；"match_fb" 自动等于 fb0 物理分辨率（推荐）；或 [w, h]
@@ -222,6 +223,7 @@ class Config:
         out["screen_inches"] = _clip_float(out.get("screen_inches"), 0.0, 200.0, 0.0)
         out["browser_timeout"] = _clip_int(out.get("browser_timeout"), 5, 120, 30)
         out["browser_scale"] = _clip_float(out.get("browser_scale"), 0.5, 3.0, 1.0)
+        out["display_zoom"] = _clip_float(out.get("display_zoom"), 0.5, 3.0, 1.0)
         # 视口
         win = out.get("browser_window") or "match_fb"
         if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
@@ -291,6 +293,8 @@ class Config:
             if v not in ("contain", "cover", "stretch"):
                 return False, "画面适配模式仅支持 contain/cover/stretch"
             clean["display_fit"] = v
+        if "display_zoom" in patch:
+            clean["display_zoom"] = _clip_float(patch["display_zoom"], 0.5, 3.0, 1.0)
         if "fb_enabled" in patch:
             clean["fb_enabled"] = bool(patch["fb_enabled"])
         if "hide_cursor" in patch:

@@ -680,6 +680,13 @@ def main():
     else:
         win_w = int((bw_cfg or [1920, 1080])[0])
         win_h = int((bw_cfg or [1920, 1080])[1])
+    # display_zoom 应用：zoom>1 → window 缩小 → 页面 CSS 像素更少 → fb 截图看起来放大
+    # zoom<1 → window 放大 → 页面 CSS 像素更多 → fb 截图看起来缩小（看见更多内容）
+    zoom = float(cfg.get("display_zoom", 1.0) or 1.0)
+    if zoom <= 0:
+        zoom = 1.0
+    win_w = max(320, int(win_w / zoom))
+    win_h = max(240, int(win_h / zoom))
     # 计算默认 user-data-dir：用户未配置时用 var/chromium-profile 持久化
     # （cookies / localStorage / IndexedDB / autofill / Service Worker 都留存）
     var_dir_for_profile = os.environ.get("TRIM_PKGVAR") or \
@@ -860,6 +867,12 @@ def main():
                 else:
                     new_w = int(win[0])
                     new_h = int(win[1])
+                # display_zoom 应用（与启动期逻辑一致）
+                zoom_now = float(cfg.get("display_zoom", 1.0) or 1.0)
+                if zoom_now <= 0:
+                    zoom_now = 1.0
+                new_w = max(320, int(new_w / zoom_now))
+                new_h = max(240, int(new_h / zoom_now))
                 if (new_w, new_h) != (browser.window[0], browser.window[1]):
                     print("[fb] 窗口尺寸变化，重启 Chromium (%dx%d → %dx%d)" %
                           (browser.window[0], browser.window[1], new_w, new_h),

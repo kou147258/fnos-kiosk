@@ -237,6 +237,14 @@ document.getElementById("seg-fit").addEventListener("click", function (e) {
   cfg.display_fit = b.dataset.v;
 });
 
+document.getElementById("seg-zoom").addEventListener("click", function (e) {
+  var b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#seg-zoom button").forEach(function (x) { x.classList.remove("active"); });
+  b.classList.add("active");
+  cfg.display_zoom = parseFloat(b.dataset.v);
+});
+
 document.getElementById("seg-win-preset").addEventListener("click", function (e) {
   var b = e.target.closest("button");
   if (!b) return;
@@ -428,10 +436,22 @@ function renderLocalList() {
     detail.textContent = (f.size / 1024).toFixed(1) + " KB · " +
       new Date(f.mtime * 1000).toLocaleString("zh-CN") + " · " +
       (f.mime || "");
+    var delBtn = document.createElement("button");
+    delBtn.className = "btn-mini danger";
+    delBtn.textContent = "🗑 删除";
+    delBtn.style.cssText = "margin-left:auto;padding:2px 8px;font-size:12px";
+    delBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (!confirm("确认删除文件 " + f.name + "？\n（页面 tab 中引用此文件的 URL 配置也会失效）")) return;
+      api("POST", "api/pages/delete", { name: f.name })
+        .then(function () { toast("已删除 " + f.name); loadLocalFiles(); })
+        .catch(function (err) { toast(err.message || "删除失败", true); });
+    });
     row.appendChild(dot);
     row.appendChild(icon);
     row.appendChild(name);
     row.appendChild(detail);
+    row.appendChild(delBtn);
     list.appendChild(row);
   });
 }
@@ -812,6 +832,11 @@ function fillFromCfg() {
   });
   document.querySelectorAll("#seg-fit button").forEach(function (b) {
     b.classList.toggle("active", b.dataset.v === (cfg.display_fit || "contain"));
+  });
+  document.querySelectorAll("#seg-zoom button").forEach(function (b) {
+    var v = parseFloat(b.dataset.v);
+    var cur = parseFloat(cfg.display_zoom || 1);
+    b.classList.toggle("active", Math.abs(v - cur) < 0.01);
   });
   document.querySelectorAll("#seg-mode button").forEach(function (b) {
     b.classList.toggle("active", b.dataset.v === (cfg.default_mode || "cycle"));
