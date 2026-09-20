@@ -19,6 +19,12 @@ from http.server import BaseHTTPRequestHandler
 import dash_pages
 from dash_config import APP_VERSION
 
+# cdp_proxy 是选用的（dashboard 自己的独立 CDP 客户端，用于设置页远程控制）
+try:
+    import cdp_proxy as _cdp_proxy
+except Exception:  # pragma: no cover
+    _cdp_proxy = None
+
 MIME = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -110,6 +116,7 @@ class Handler(BaseHTTPRequestHandler):
     var_dir = "."
     etc_dir = "."
     http_port = 0
+    cdp = None  # cdp_proxy.CDPProxy 实例（延迟初始化）
 
     def log_message(self, fmt, *args):
         pass
@@ -535,6 +542,141 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return None
 
+    # ---------- 内置远程控制（settings 页用） ----------
+    def _get_cdp(self):
+        """延迟初始化 CDP 客户端。失败抛 RuntimeError。"""
+        if _cdp_proxy is None:
+            raise RuntimeError("cdp_proxy 模块不可用")
+        if self.cdp is None:
+            port = int(os.environ.get("KIOSK_CDP_PORT")
+                       or (self.http_port + 1023))
+            self.cdp = _cdp_proxy.CDPProxy(port=port)
+        try:
+            self.cdp._ensure_connected()
+        except Exception:
+            # 断线重连一次
+            try:
+                self.cdp.close()
+            except Exception:
+                pass
+            self.cdp = _cdp_proxy.CDPProxy(
+                port=int(os.environ.get("KIOSK_CDP_PORT")
+                         or (self.http_port + 1023)))
+            self.cdp._ensure_connected()
+        return self.cdp
+
+    def _cdp_live_png(self):
+        """实时 Chromium 截图（PNG bytes）。"""
+        try:
+            cdp = self._get_cdp()
+            import base64 as _b
+            b64 = cdp.screenshot()
+            data = _b.b64decode(b64)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        except Exception as e:
+            self._send_json(503, {"ok": False, "error": str(e)})
+
+    def _cdp_live_json(self):
+        """实时状态（URL + title + dimensions）。"""
+        try:
+            cdp = self._get_cdp()
+            url = cdp.get_url() or ""
+            title = cdp.get_title() or ""
+            self._send_json(200, {"ok": True, "url": url, "title": title})
+        except Exception as e:
+            self._send_json(503, {"ok": False, "error": str(e)})
+
+    def _cdp_click(self):
+        obj = self._read_json()
+        if not obj:
+            return None
+        try:
+            x = float(obj.get("x", 0))
+            y = float(obj.get("y", 0))
+            button = str(obj.get("button", "left"))
+            count = int(obj.get("click_count", 1))
+            self._get_cdp().click(x, y, button=button, click_count=count)
+            self._send_json(200, {"ok": True})
+        except Exception as e:
+            self._send_json(500, {"ok": False, "error": str(e)})
+
+    def _cdp_type(self):
+        obj = self._read_json()
+        if not obj:
+            return None
+        text = str(obj.get("text", ""))
+        if not text:
+            return self._send_json(200, {"ok": True, "n": 0})
+        try:
+            self._get_cdp().type_text(text)
+            self._send_json(200, {"ok": True, "n": len(text)})
+        except Exception as e:
+            self._send_json(500, {"ok": False, "error": str(e)})
+
+    def _cdp_key(self):
+        obj = self._read_json()
+        if not obj:
+            return None
+        try:
+            key = str(obj.get("key", ""))
+            modifiers = int(obj.get("modifiers", 0))
+            if not key:
+                return self._send_json(400, {"ok": False,
+                                             "error": "缺少 key"})
+            self._get_cdp().key_press(key, modifiers=modifiers)
+            self._send_json(200, {"ok": True})
+        except Exception as e:
+            self._send_json(500, {"ok": False, "error": str(e)})
+
+    def _cdp_scroll(self):
+        obj = self._read_json()
+        if not obj:
+            return None
+        try:
+            x = float(obj.get("x", 0))
+            y = float(obj.get("y", 0))
+            dx = float(obj.get("deltaX", 0))
+            dy = float(obj.get("deltaY", 0))
+            self._get_cdp().scroll(x, y, dx, dy)
+            self._send_json(200, {"ok": True})
+        except Exception as e:
+            self._send_json(500, {"ok": False, "error": str(e)})
+
+    def _cdp_go(self):
+        obj = self._read_json()
+        if not obj:
+            return None
+        url = str(obj.get("url", ""))
+        if not url:
+            return self._send_json(400, {"ok": False, "error": "缺少 url"})
+        try:
+            self._get_cdp().navigate(url, timeout=30)
+            self._send_json(200, {"ok": True})
+        except Exception as e:
+            self._send_json(500, {"ok": False, "error": str(e)})
+
+    def _cdp_eval(self):
+        obj = self._read_json()
+        if not obj:
+            return None
+        expr = str(obj.get("expression", ""))
+        if not expr:
+            return self._send_json(400, {"ok": False,
+                                         "error": "缺少 expression"})
+        try:
+            val = self._get_cdp().eval_js(expr)
+            self._send_json(200, {"ok": True, "value": val})
+        except Exception as e:
+            self._send_json(500, {"ok": False, "error": str(e)})
+
     # ---- GET ----
     def do_GET(self):
         path = self.path.split("?", 1)[0].split("#", 1)[0]
@@ -616,6 +758,10 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             self._send_json(200, {"ok": True, "log": "".join(lines)})
             return
+        if path == "/api/fb/live.png":
+            # 实时 Chromium 截图（用于「远程控制」tab）
+            self._cdp_live_png()
+            return
         if path == "/api/fb/diag":
             # 一键诊断：把环境 + 权限 + 进程状态打包返回
             self._send_json(200, {"ok": True, "diag": self._fb_diag()})
@@ -681,6 +827,31 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/auth/reset":
             self._send_json(200, self._auth_reset())
+            return
+        # ---- 内置远程控制（settings 页用）----
+        if path == "/api/fb/live.png":
+            self._cdp_live_png()
+            return
+        if path == "/api/fb/live.json":
+            self._cdp_live_json()
+            return
+        if path == "/api/fb/click":
+            self._cdp_click()
+            return
+        if path == "/api/fb/type":
+            self._cdp_type()
+            return
+        if path == "/api/fb/key":
+            self._cdp_key()
+            return
+        if path == "/api/fb/scroll":
+            self._cdp_scroll()
+            return
+        if path == "/api/fb/go":
+            self._cdp_go()
+            return
+        if path == "/api/fb/eval":
+            self._cdp_eval()
             return
         if path == "/api/fb/restart":
             # 手动强制重建 fb_render 进程（用于拖拽新文件后立即显示 / 排障）

@@ -1,0 +1,42 @@
+v0.1.12: 内置远程控制 tab（告别 chrome://inspect / SSH）
+
+用户反馈：「这个还是太复杂了，能直接在这个应用里面加上一个内置浏览器么」
+
+## 实现
+
+1. **app/bin/cdp_proxy.py**：独立 CDP 客户端，复用 dash_browser 的 RFC 6455 实现（避免重复实现 WebSocket）。包含：
+   - connect / close / 自动重连
+   - screenshot（Page.captureScreenshot）
+   - click / mouse_move / scroll（Input.dispatchMouseEvent）
+   - type_text（Input.insertText 直接打字符串）
+   - key_press（特殊键 Enter/Tab/Esc/Backspace/方向键 等）
+   - navigate / eval_js
+
+2. **dash_http.py**：7 个新 API（延迟 init cdp_proxy 实例，断线自动重连）
+   - GET /api/fb/live.png — 二进制 PNG 截图
+   - GET /api/fb/live.json — 当前 URL + title
+   - POST /api/fb/click — {x, y}
+   - POST /api/fb/type — {text}
+   - POST /api/fb/key — {key, modifiers}
+   - POST /api/fb/scroll — {x, y, deltaX, deltaY}
+   - POST /api/fb/go — {url}
+   - POST /api/fb/eval — {expression}
+
+3. **settings.html + settings.js + settings.css**：新增「🔍 远程控制」tab
+   - 1fps 自动刷新截图（可关）
+   - 点击截图 → 自动换算 Chromium 视口坐标 → 点击
+   - 鼠标滚轮支持
+   - URL 栏 + 跳转按钮
+   - 文本输入框 + 「输入」/「输入+回车」按钮
+   - 特殊键按钮 Tab / Enter / Esc / ⌫ / Del / Space / ↑↓←→
+
+## 用户体验改进
+
+登录 HA / Grafana / 自建面板 不需要 chrome://inspect 或 SSH 隧道：
+1. 设置页 → 「🔍 远程控制」tab
+2. 看截图，**点截图聚焦目标输入框**
+3. 下方输入账号密码 → 点「输入 + 回车」
+4. 登录态写入 Chromium profile
+5. 关闭远程控制 tab，副屏自动显示已登录的页面
+
+安全：所有路由都受 127.0.0.1 限制（settings 页本身就只允许本机访问）

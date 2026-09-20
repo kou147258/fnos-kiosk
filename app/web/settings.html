@@ -28,6 +28,7 @@
       <button data-tab="pages" class="active">页面</button>
       <button data-tab="display">显示</button>
       <button data-tab="browser">浏览器</button>
+      <button data-tab="remote">🔍 远程控制</button>
       <button data-tab="advanced">高级</button>
     </nav>
 
@@ -164,7 +165,59 @@
         </div>
       </section>
 
-      <!-- ===== 高级 ===== -->
+      <!-- ===== 远程控制 ===== -->
+      <section id="tab-remote" class="tab">
+        <h3>内置远程控制（无需 chrome://inspect / SSH）</h3>
+        <p class="hint">直接在下面操作 NAS 上的 headless Chromium。截图 1 fps 自动刷新；点击截图直接转发点击；下方输入框会把内容输入到 Chromium 当前焦点元素。用于一次性登录需要认证的页面（HA / Grafana / 自建面板）。</p>
+        <div class="row-2">
+          <button id="btn-remote-refresh" class="btn-mini">🔄 立即刷新截图</button>
+          <label><input type="checkbox" id="remote-auto" checked> 自动刷新（1s）</label>
+        </div>
+        <div class="row full">
+          <label class="field">当前 URL
+            <input type="text" id="remote-url" class="text-input"
+                   placeholder="（连接后会显示当前地址）">
+          </label>
+          <button id="btn-remote-go" class="btn-mini">前往</button>
+        </div>
+        <p class="hint">点击下面截图 = 在 Chromium 同位置点击。截图按 Chromium 视口原比例渲染；坐标自动换算。</p>
+        <div class="remote-stage" id="remote-stage">
+          <img id="remote-img" alt="Chromium 实时截图"
+               draggable="false">
+          <div id="remote-placeholder" class="remote-placeholder">
+            <span class="ph-icon">📡</span>
+            <span class="ph-text">正在连接 kiosk Chromium…<br>如果一直没画面，检查「显示」tab 的 Chromium CDP 端口是否启动</span>
+          </div>
+        </div>
+        <h3>键盘输入</h3>
+        <p class="hint">下面的输入框会把内容输入到 Chromium 当前焦点元素（比如登录页的用户名/密码框）。先在截图上点一下目标输入框，再回到这里输入。</p>
+        <label class="field">要输入的文字
+          <textarea id="remote-input" class="text-input code" rows="3"
+                    placeholder="在此输入后按 Enter 或点「输入」"></textarea>
+        </label>
+        <div class="row-2">
+          <button id="btn-remote-input" class="btn-mini">⌨ 输入到 Chromium</button>
+          <button id="btn-remote-submit" class="btn-mini">⌨ 输入 + 回车</button>
+        </div>
+        <h3>特殊键</h3>
+        <div class="row-2 key-grid">
+          <button class="btn-mini key-btn" data-key="Tab">Tab</button>
+          <button class="btn-mini key-btn" data-key="Enter">Enter</button>
+          <button class="btn-mini key-btn" data-key="Escape">Esc</button>
+          <button class="btn-mini key-btn" data-key="Backspace">⌫</button>
+          <button class="btn-mini key-btn" data-key="Delete">Del</button>
+          <button class="btn-mini key-btn" data-key="Space">Space</button>
+          <button class="btn-mini key-btn" data-key="ArrowUp">↑</button>
+          <button class="btn-mini key-btn" data-key="ArrowDown">↓</button>
+          <button class="btn-mini key-btn" data-key="ArrowLeft">←</button>
+          <button class="btn-mini key-btn" data-key="ArrowRight">→</button>
+        </div>
+        <p class="hint center" style="margin-top:12px">
+          🛈 所有操作仅作用于 kiosk 的 Chromium；本页与 fb0 显示器共用同一 Chromium 实例，操作会即时反映到副屏。
+        </p>
+      </section>
+
+<!-- ===== 高级 ===== -->
       <section id="tab-advanced" class="tab">
         <h3>本地上传（图片 / 视频 / HTML）</h3>
         <p class="hint">存放在 var/pages/。上传后可在「页面」tab 引用——选「类型」为「本地 HTML」或「媒体文件」即可。</p>
