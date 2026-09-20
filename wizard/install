@@ -1,72 +1,61 @@
-{
-  "logo": "/logo.png",
-  "title": {
-    "i18n": {
-      "zh-CN": "浏览器屏 · 安装向导",
-      "en": "Browser Kiosk · Setup Wizard"
-    }
+[
+  {
+    "stepTitle": "基本设置",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "浏览器屏用于把任意 Web 页面 / 图片 / 视频 直接显示到 NAS 副屏（/dev/fb0）。本步选择默认内容源与轮换行为。"
+      },
+      {
+        "type": "select",
+        "field": "wizard_default_mode",
+        "label": "默认内容模式",
+        "options": [
+          {"label": "URL 列表轮换", "value": "cycle"},
+          {"label": "单 URL 全屏", "value": "single"}
+        ],
+        "initValue": "cycle"
+      },
+      {
+        "type": "select",
+        "field": "wizard_rotate_seconds",
+        "label": "页面轮换时间",
+        "options": [
+          {"label": "10 秒", "value": "10"},
+          {"label": "30 秒", "value": "30"},
+          {"label": "60 秒", "value": "60"},
+          {"label": "2 分钟", "value": "120"},
+          {"label": "5 分钟", "value": "300"}
+        ],
+        "initValue": "30"
+      },
+      {
+        "type": "select",
+        "field": "wizard_rotate",
+        "label": "显示器方向",
+        "options": [
+          {"label": "0°（默认）", "value": "0"},
+          {"label": "90°", "value": "90"},
+          {"label": "180°", "value": "180"},
+          {"label": "270°", "value": "270"}
+        ],
+        "initValue": "0"
+      }
+    ]
   },
-  "items": [
-    {
-      "type": "select",
-      "field": "wizard_default_mode",
-      "label": {
-        "i18n": {
-          "zh-CN": "默认内容模式",
-          "en": "Default Content Mode"
-        }
+  {
+    "stepTitle": "显示器输出（可选）",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "通过 HDMI/VGA 直连的副屏可独立显示浏览器内容，自动翻页、无需登录。需系统存在 /dev/fb0 帧缓冲；建议安装 python3-pil 用于 CJK 字体回退。"
       },
-      "options": [
-        {"label": {"i18n": {"zh-CN": "URL 列表轮换", "en": "URL List Cycling"}}, "value": "cycle"},
-        {"label": {"i18n": {"zh-CN": "单 URL 全屏", "en": "Single URL Kiosk"}}, "value": "single"}
-      ],
-      "default": "cycle"
-    },
-    {
-      "type": "select",
-      "field": "wizard_rotate_seconds",
-      "label": {
-        "i18n": {
-          "zh-CN": "页面轮换时间",
-          "en": "Page Rotation Interval"
-        }
-      },
-      "options": [
-        {"label": "10 秒", "value": "10"},
-        {"label": "30 秒", "value": "30"},
-        {"label": "60 秒", "value": "60"},
-        {"label": "2 分钟", "value": "120"},
-        {"label": "5 分钟", "value": "300"}
-      ],
-      "default": "30"
-    },
-    {
-      "type": "select",
-      "field": "wizard_rotate",
-      "label": {
-        "i18n": {
-          "zh-CN": "显示方向",
-          "en": "Display Orientation"
-        }
-      },
-      "options": [
-        {"label": "0°", "value": "0"},
-        {"label": "90°", "value": "90"},
-        {"label": "180°", "value": "180"},
-        {"label": "270°", "value": "270"}
-      ],
-      "default": "0"
-    },
-    {
-      "type": "checkbox",
-      "field": "wizard_fb_enabled",
-      "label": {
-        "i18n": {
-          "zh-CN": "启用显示器输出（安装后立刻在副屏显示）",
-          "en": "Enable display output (start immediately after install)"
-        }
-      },
-      "default": true
-    }
-  ]
-}
+      {
+        "type": "switch",
+        "field": "wizard_fb_enabled",
+        "label": "启用显示器输出（/dev/fb0）",
+        "initValue": "true"
+      }
+    ]
+  }
+]

@@ -13,15 +13,16 @@ chmod +x build.sh cmd/* app/bin/*.py app/ui/index.cgi tools/*.py 2>/dev/null || 
 
 if command -v fnpack >/dev/null 2>&1; then
     echo "[3/3] 使用 fnpack 打包..."
-    fnpack pack .
-    echo "完成：生成 .fpk 安装包。"
+    fnpack build
+    echo "完成：生成 com.fnos.kiosk.fpk 安装包。"
 elif command -v python3 >/dev/null 2>&1; then
-    echo "[3/3] fnpack 不在 PATH，使用 tools/pack_fpk.py 离线打包..."
+    echo "[3/3] fnpack 不在 PATH，使用 tools/pack_fpk.py 兜底（仅 ZIP 格式，fnOS 可能拒绝）..."
+    echo "      建议下载 fnpack: https://static2.fnnas.com/fnpack/fnpack-1.2.1-<os>-<arch>"
     python3 tools/pack_fpk.py
 else
     echo "[3/3] fnpack 与 python3 都不可用，请安装其一后重试："
     echo "      fnpack:    https://developer.fnnas.com/docs/cli/fnpack"
-    echo "      python3:    apt install -y python3"
+    echo "      python3:   apt install -y python3"
 fi
 
 echo ""
