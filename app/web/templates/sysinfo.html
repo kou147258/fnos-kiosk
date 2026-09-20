@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>系统状态</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#0f172a; color:#e8eef7;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    overflow:hidden; }
+  .stage { padding: 4vh 6vw; height:100vh; box-sizing:border-box; }
+  h1 { font-weight:300; font-size: clamp(24px, 4vw, 56px); margin:0 0 30px;
+    color:#60a5fa; letter-spacing:0.1em; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap:24px; }
+  .tile { background:rgba(30,41,59,0.5); border-radius:16px; padding:24px 28px;
+    border:1px solid rgba(96,165,250,0.2); }
+  .tile h2 { font-size:16px; color:#94a3b8; margin:0 0 12px; font-weight:400; letter-spacing:0.1em; }
+  .tile .big { font-size: clamp(28px, 5vw, 56px); font-weight:200; line-height:1.1;
+    color:#fbbf24; font-variant-numeric:tabular-nums; }
+  .tile .small { font-size:14px; color:#64748b; margin-top:8px; }
+  .bar { height:8px; background:#1e293b; border-radius:4px; margin-top:14px; overflow:hidden; }
+  .bar > div { height:100%; background:linear-gradient(90deg,#60a5fa,#fbbf24,#ef4444);
+    transition:width 0.5s; border-radius:4px; }
+  .row { display:flex; justify-content:space-between; padding:6px 0;
+    border-bottom:1px solid rgba(96,165,250,0.1); font-size:14px; }
+  .row:last-child { border-bottom:0; }
+  .row span:last-child { color:#fbbf24; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <h1 id="title">系统状态</h1>
+  <div class="grid" id="grid"><div class="tile"><h2>加载中…</h2></div></div>
+</div>
+<script>
+async function load() {
+  try {
+    const r = await fetch("/api/sysinfo");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const c = j.cpu || {}, m = j.mem || {}, d = j.disk || {}, n = j.net || {}, u = j.uptime || "";
+    document.getElementById("title").textContent = "系统状态 · " + j.hostname;
+    document.getElementById("grid").innerHTML = `
+      <div class="tile">
+        <h2>CPU 使用率</h2>
+        <div class="big">${c.percent}%</div>
+        <div class="bar"><div style="width:${c.percent}%"></div></div>
+        <div class="small">${c.cores} 核 · 频率 ${c.freq_mhz} MHz</div>
+      </div>
+      <div class="tile">
+        <h2>内存</h2>
+        <div class="big">${m.percent}%</div>
+        <div class="bar"><div style="width:${m.percent}%"></div></div>
+        <div class="small">${m.used_gb} GB / ${m.total_gb} GB</div>
+      </div>
+      <div class="tile">
+        <h2>磁盘</h2>
+        ${d.parts.map(p => `<div class="row"><span>${p.mount}</span><span>${p.used_gb}/${p.total_gb} GB (${p.percent}%)</span></div>`).join("")}
+      </div>
+      <div class="tile">
+        <h2>网络</h2>
+        <div class="row"><span>↑ 上传</span><span>${n.tx_kbps} KB/s</span></div>
+        <div class="row"><span>↓ 下载</span><span>${n.rx_kbps} KB/s</span></div>
+        <div class="row"><span>IP</span><span>${n.ip || "—"}</span></div>
+      </div>
+      <div class="tile">
+        <h2>运行时间</h2>
+        <div class="big" style="font-size:clamp(20px,3vw,36px)">${u}</div>
+        <div class="small">${j.loadavg || ""}</div>
+      </div>`;
+  } catch (e) {
+    document.getElementById("grid").innerHTML =
+      `<div class="tile"><h2>加载失败</h2><div class="small">${e.message}</div></div>`;
+  }
+}
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

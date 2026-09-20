@@ -293,6 +293,14 @@
           <input type="checkbox" id="set-allow-private">
         </div>
         <p class="hint">默认禁用。开启后允许把 NAS 内网服务（如 Home Assistant 192.168.x.x）作为页面 URL。</p>
+
+        <h3>配置备份 / 恢复</h3>
+        <div class="row-2">
+          <button id="btn-config-export" class="btn-mini">⬇ 导出配置（JSON）</button>
+          <button id="btn-config-import" class="btn-mini">⬆ 导入配置（JSON）</button>
+          <input type="file" id="config-import-file" accept="application/json" style="display:none">
+        </div>
+        <p class="hint">导出 = 下载当前所有页面/设置（不含已上传文件）；导入 = 替换现有页面/设置（已上传文件保留）。</p>
       </section>
 
     </div>
@@ -321,7 +329,9 @@
 
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<datalist id="recent-urls"></datalist>
+
+      <div id="toast" class="toast hidden"></div>
 
 <!-- ============ 拖拽上传覆盖层 ============ -->
 <div id="drop-overlay" class="drop-overlay hidden">

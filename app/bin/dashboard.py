@@ -50,6 +50,8 @@ def main():
 
     cfg = dash_config.Config(args.config, var_dir)
     pages = dash_pages.PageStore(os.path.join(var_dir, "pages"))
+    # 把「最近 URL」回调注入；config 保存时自动追加
+    cfg._on_url_saved = dash_http.Handler._recent_urls_add  # type: ignore[attr-defined]
 
     dash_http.Handler.web_root = args.web
     dash_http.Handler.config = cfg

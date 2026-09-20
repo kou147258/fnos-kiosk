@@ -433,6 +433,222 @@ class Handler(BaseHTTPRequestHandler):
             pass
         return info
 
+    # ---- 系统信息（给「系统状态」模板页面用）----
+    def _sysinfo(self):
+        import shutil, subprocess
+        info = {"hostname": os.uname().nodename, "cpu": {}, "mem": {},
+                "disk": {"parts": []}, "net": {}, "uptime": "", "loadavg": ""}
+        # CPU
+        try:
+            with open("/proc/loadavg") as f:
+                info["loadavg"] = f.read().strip()
+            with open("/proc/cpuinfo") as f:
+                lines = f.read().splitlines()
+            cores = sum(1 for ln in lines if ln.startswith("processor"))
+            freq = 0
+            for ln in lines:
+                if ln.startswith("cpu MHz"):
+                    try:
+                        freq = int(float(ln.split(":", 1)[1].strip()))
+                    except (ValueError, IndexError):
+                        pass
+                    break
+            # 当前使用率（采样 200ms）
+            def read_stat():
+                with open("/proc/stat") as f:
+                    for ln in f:
+                        if ln.startswith("cpu "):
+                            return [int(x) for x in ln.split()[1:]]
+                return None
+            a = read_stat()
+            time.sleep(0.25)
+            b = read_stat()
+            pct = 0.0
+            if a and b and len(a) >= 5 and len(b) >= 5:
+                da = sum(b) - sum(a)
+                di = b[4] - a[4] if b[4] >= a[4] else 0
+                pct = round(100.0 * (1.0 - di / da) if da else 0.0, 1)
+            info["cpu"] = {"cores": cores, "freq_mhz": freq, "percent": pct}
+        except OSError:
+            pass
+        # 内存
+        try:
+            with open("/proc/meminfo") as f:
+                m = {}
+                for ln in f:
+                    if ":" in ln:
+                        k, v = ln.split(":", 1)
+                        m[k.strip()] = v.strip()
+            def kb(k):
+                try:
+                    return int(m.get(k, "0").split()[0])
+                except (ValueError, IndexError):
+                    return 0
+            total = kb("MemTotal")
+            avail = kb("MemAvailable") or kb("MemFree")
+            used = total - avail
+            info["mem"] = {
+                "total_gb": round(total / 1024 / 1024, 1),
+                "used_gb": round(used / 1024 / 1024, 1),
+                "percent": round(100.0 * used / total, 1) if total else 0,
+            }
+        except OSError:
+            pass
+        # 磁盘
+        try:
+            du = shutil.disk_usage("/")
+            info["disk"]["parts"].append({
+                "mount": "/",
+                "total_gb": round(du.total / 1024 / 1024 / 1024, 1),
+                "used_gb": round(du.used / 1024 / 1024 / 1024, 1),
+                "percent": round(100.0 * du.used / du.total, 1) if du.total else 0,
+            })
+            # 抓 @appdata / var 等挂载点
+            with open("/proc/mounts") as f:
+                for ln in f:
+                    parts = ln.split()
+                    if len(parts) < 3:
+                        continue
+                    mp = parts[1]
+                    if mp in ("/", "/proc", "/sys", "/dev", "/tmp"):
+                        continue
+                    if not mp.startswith("/vol") and not mp.startswith("/var"):
+                        continue
+                    try:
+                        du = shutil.disk_usage(mp)
+                        info["disk"]["parts"].append({
+                            "mount": mp,
+                            "total_gb": round(du.total / 1024 / 1024 / 1024, 1),
+                            "used_gb": round(du.used / 1024 / 1024 / 1024, 1),
+                            "percent": round(100.0 * du.used / du.total, 1) if du.total else 0,
+                        })
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        # 网络（瞬时采样，全双工累加）
+        try:
+            with open("/proc/net/dev") as f:
+                lines = f.readlines()[2:]
+            tot_tx = tot_rx = 0
+            for ln in lines:
+                if ":" not in ln:
+                    continue
+                iface, rest = ln.split(":", 1)
+                iface = iface.strip()
+                if iface == "lo":
+                    continue
+                fields = rest.split()
+                if len(fields) >= 9:
+                    tot_rx += int(fields[0])
+                    tot_tx += int(fields[8])
+            info["net"] = {"tx_kbps": round(tot_tx / 1024, 1),
+                           "rx_kbps": round(tot_rx / 1024, 1),
+                           "ip": ""}
+            try:
+                # 取主网卡 IP
+                out = subprocess.check_output(
+                    ["hostname", "-I"], stderr=subprocess.DEVNULL, timeout=2)
+                info["net"]["ip"] = out.decode().strip().split()[0]
+            except (OSError, IndexError):
+                pass
+        except OSError:
+            pass
+        # uptime
+        try:
+            with open("/proc/uptime") as f:
+                secs = int(float(f.read().split()[0]))
+            d, r = divmod(secs, 86400)
+            h, r = divmod(r, 3600)
+            m, s = divmod(r, 60)
+            parts = []
+            if d: parts.append("%d天" % d)
+            if h: parts.append("%d小时" % h)
+            if m: parts.append("%d分" % m)
+            info["uptime"] = " ".join(parts) or "%d秒" % s
+        except OSError:
+            pass
+        return info
+
+    # ---- 配置导出（JSON 下载）----
+    def _config_export(self):
+        import json
+        try:
+            cfg = self.config.get()
+        except Exception:
+            cfg = {}
+        # 排除敏感字段（虽然目前没有，但留接口）
+        safe = dict(cfg)
+        data = json.dumps(safe, ensure_ascii=False, indent=2).encode("utf-8")
+        fname = "fnos-kiosk-config.json"
+        self._send(200, data, ctype="application/json; charset=utf-8",
+                   extra_headers=[("Content-Disposition",
+                                   "attachment; filename=\"%s\"" % fname)])
+
+    # ---- 配置导入（JSON 上传）----
+    def _config_import(self):
+        import json
+        obj = self._read_json()
+        if not obj or "config" not in obj:
+            self._send_json(400, {"ok": False, "error": "缺少 config 字段"})
+            return
+        cfg_str = obj["config"]
+        try:
+            if isinstance(cfg_str, str):
+                new_cfg = json.loads(cfg_str)
+            elif isinstance(cfg_str, dict):
+                new_cfg = cfg_str
+            else:
+                raise ValueError("config 必须是 JSON 字符串或对象")
+        except (ValueError, TypeError) as e:
+            self._send_json(400, {"ok": False, "error": "JSON 解析失败：%s" % e})
+            return
+        if not isinstance(new_cfg, dict):
+            self._send_json(400, {"ok": False, "error": "config 必须是对象"})
+            return
+        # 全量替换：先 reset 再 apply patch
+        ok, err = self.config.update(new_cfg)
+        if not ok:
+            self._send_json(400, {"ok": False, "error": err or "保存失败"})
+            return
+        # 触发 fb_render 重启（可能改了页面、显示设置等）
+        try:
+            self._fb_restart()
+        except Exception:
+            pass
+        n_pages = len(new_cfg.get("pages") or [])
+        self._send_json(200, {"ok": True,
+                             "msg": "已导入 %d 个页面" % n_pages})
+
+    # ---- 最近使用的 URL（最多 20 条，按时间倒序）----
+    def _recent_urls_path(self):
+        return os.path.join(self.var_dir, "recent_urls.json")
+
+    def _recent_urls_get(self):
+        try:
+            with open(self._recent_urls_path(), "r", encoding="utf-8") as f:
+                return json.loads(f.read())
+        except (OSError, ValueError):
+            return []
+
+    def _recent_urls_add(self, url):
+        if not url or not isinstance(url, str):
+            return
+        url = url.strip()
+        if not url or not url.startswith(("http://", "https://")):
+            return
+        urls = self._recent_urls_get()
+        # 去重（最新在前）
+        urls = [u for u in urls if u != url]
+        urls.insert(0, url)
+        urls = urls[:20]
+        try:
+            with open(self._recent_urls_path(), "w", encoding="utf-8") as f:
+                json.dump(urls, f, ensure_ascii=False)
+        except OSError:
+            pass
+        return urls
+
     def _fb_diag(self):
         """一键诊断：fb0 状态 + 进程权限 + Chromium + 日志。"""
         import grp
@@ -739,6 +955,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/fb/info":
             self._send_json(200, {"ok": True, "fb": self._fb_info()})
             return
+        if path == "/api/sysinfo":
+            self._send_json(200, self._sysinfo())
+            return
+        if path == "/api/config/export":
+            self._config_export()
+            return
+        if path == "/api/recent-urls":
+            self._send_json(200, {"ok": True,
+                                 "urls": self._recent_urls_get()})
+            return
         if path == "/api/fb/dump.png":
             png = self._fb_dump_png()
             if png is None:
@@ -827,6 +1053,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/auth/reset":
             self._send_json(200, self._auth_reset())
+            return
+        if path == "/api/config/import":
+            self._config_import()
             return
         # ---- 内置远程控制（settings 页用）----
         if path == "/api/fb/live.png":

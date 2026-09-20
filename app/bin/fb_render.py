@@ -315,12 +315,13 @@ class FB:
 class BrowserCanvas:
     name = "browser"
 
-    def __init__(self, w, h, browser, page_store):
+    def __init__(self, w, h, browser, page_store, http_port=8280):
         from PIL import Image  # noqa
         self._Image = Image
         self.w, self.h = w, h
         self.browser = browser
         self.page_store = page_store
+        self.http_port = http_port
         self.img = Image.new("RGB", (w, h), (0, 0, 0))
         self._page = None
         self._page_url = ""
@@ -331,7 +332,8 @@ class BrowserCanvas:
 
     def set_page(self, page):
         self._page = page
-        self._page_url = dash_pages.resolve_url(page, self.page_store)
+        self._page_url = dash_pages.resolve_url(page, self.page_store,
+                                                http_port=self.http_port)
         self._loaded_at = 0.0  # 触发下次 begin() 重新导航
 
     def _render_background(self, pil_img):
@@ -827,8 +829,17 @@ def main():
     pages_root = args.pages_dir or os.path.join(
         os.environ.get("TRIM_PKGVAR", os.path.join(os.getcwd(), "var")), "pages")
     page_store = dash_pages.PageStore(pages_root)
+    # 从 args.api URL 解析 dashboard HTTP 端口（模板 URL 需要 127.0.0.1:<port>）
+    _http_port = 8280
+    try:
+        from urllib.parse import urlparse
+        u = urlparse(args.api or "")
+        if u.port:
+            _http_port = u.port
+    except Exception:
+        pass
 
-    canvas = BrowserCanvas(W, H, browser, page_store)
+    canvas = BrowserCanvas(W, H, browser, page_store, http_port=_http_port)
     last_frame = None
     rotate = 0
     rotate_sec = 30
@@ -890,7 +901,8 @@ def main():
                     try:
                         browser.start(log_path=log_path)
                         browser.connect()
-                        canvas = BrowserCanvas(W, H, browser, page_store)
+                        canvas = BrowserCanvas(W, H, browser, page_store,
+                                              http_port=_http_port)
                         canvas.set_page(pages[0])
                     except Exception as e:
                         print("[fb] Chromium 重建失败：%r" % e, flush=True)
@@ -950,7 +962,8 @@ def main():
                     )
                     browser.start(log_path=log_path)
                     browser.connect()
-                    canvas = BrowserCanvas(W, H, browser, page_store)
+                    canvas = BrowserCanvas(W, H, browser, page_store,
+                                          http_port=_http_port)
                     canvas.set_page(pages[0] if pages else None)
                     main._restart_attempts = 0
                 except Exception as e:

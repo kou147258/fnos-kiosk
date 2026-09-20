@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>天气</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:linear-gradient(135deg,#1e3a8a,#0f172a);
+    color:#e8eef7; font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    overflow:hidden; }
+  .stage { display:flex; align-items:center; justify-content:center; height:100vh; }
+  .card { background:rgba(15,23,42,0.5); border-radius:24px; padding:40px 60px;
+    backdrop-filter:blur(10px); box-shadow:0 20px 60px rgba(0,0,0,0.4);
+    display:flex; flex-direction:column; align-items:center; min-width:60%; }
+  .city { font-size:clamp(20px,3vw,36px); color:#94a3b8; margin-bottom:8px; letter-spacing:0.2em; }
+  .icon { font-size:clamp(80px,15vw,200px); line-height:1; margin:20px 0; }
+  .temp { font-size:clamp(60px,12vw,160px); font-weight:200; line-height:1;
+    color:#fbbf24; font-variant-numeric:tabular-nums; }
+  .desc { font-size:clamp(18px,2.5vw,32px); color:#cbd5e1; margin-top:8px; }
+  .meta { margin-top:24px; display:flex; gap:32px; font-size:clamp(14px,1.8vw,22px); color:#94a3b8; }
+  .meta div { text-align:center; }
+  .meta b { display:block; color:#e8eef7; font-size:1.3em; margin-top:4px; }
+  .err { color:#ef4444; font-size:18px; padding:20px; text-align:center; }
+  .refresh { font-size:12px; color:#475569; margin-top:16px; }
+</style>
+</head>
+<body>
+<div class="stage"><div class="card" id="card"><div class="err">加载中…</div></div></div>
+<script>
+const ICON = {
+  "Clear": "☀️", "Sunny": "☀️",
+  "Partly cloudy": "⛅", "Cloudy": "☁️", "Overcast": "☁️",
+  "Mist": "🌫️", "Fog": "🌫️",
+  "Light rain": "🌦️", "Rain": "🌧️", "Heavy rain": "⛈️",
+  "Snow": "❄️", "Light snow": "🌨️",
+  "Thunder": "⛈️", "Thunderstorm": "⛈️"
+};
+function iconOf(d) { return ICON[d] || "🌤️"; }
+async function load() {
+  const card = document.getElementById("card");
+  try {
+    // wttr.in 提供 JSON 接口；优先用户配置 city（通过 ?city=），否则用 IP 定位
+    const params = new URLSearchParams(location.search);
+    const city = params.get("city") || "";
+    const url = city ? `https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=zh`
+                     : `https://wttr.in/?format=j1&lang=zh`;
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const cur = j.current_condition && j.current_condition[0];
+    const near = j.nearest_area && j.nearest_area[0];
+    if (!cur) throw new Error("数据为空");
+    const desc = cur.lang_zh && cur.lang_zh[0] && cur.lang_zh[0].value
+              || cur.weatherDesc[0].value;
+    const cityName = near && near.areaName && near.areaName[0] && near.areaName[0].value
+                  || city || "当前位置";
+    card.innerHTML = `
+      <div class="city">${cityName}</div>
+      <div class="icon">${iconOf(cur.weatherDesc[0].value)}</div>
+      <div class="temp">${cur.temp_C}°</div>
+      <div class="desc">${desc}</div>
+      <div class="meta">
+        <div>体感<b>${cur.FeelsLikeC}°</b></div>
+        <div>湿度<b>${cur.humidity}%</b></div>
+        <div>风速<b>${cur.windspeedKmph} km/h</b></div>
+      </div>
+      <div class="refresh">每 10 分钟自动刷新</div>`;
+  } catch (e) {
+    card.innerHTML = `<div class="err">⚠️ 天气数据加载失败<br>${e.message}<br>请检查 NAS 网络是否能访问 wttr.in</div>
+      <div class="refresh">30 秒后重试</div>`;
+  }
+}
+load();
+setInterval(load, 10 * 60 * 1000);
+setInterval(() => location.reload(), 30 * 60 * 1000);
+</script>
+</body>
+</html>

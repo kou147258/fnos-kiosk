@@ -301,6 +301,14 @@ class Browser:
             "--disable-component-update",
             "--disable-default-apps",
             "--metrics-recording-only",
+            "--noerrdialogs",                  # 无错误弹窗
+            "--disable-session-crashed-bubble", # 无「恢复会话」气泡
+            "--disable-popup-blocking",        # 允许弹窗（很多页面依赖）
+            "--disable-pinch",                 # 禁用手势缩放（防误触）
+            "--overscroll-history-navigation=0", # 禁用手势前进后退
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-features=PaintHolding,AutoupgradeMixedContent",
         ]
         if self.hide_cursor:
             args.append("--hide-cursor")

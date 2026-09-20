@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>时钟</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#0a1322; color:#e8eef7;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    overflow:hidden; }
+  .stage { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    height:100vh; user-select:none; -webkit-user-select:none; }
+  .time { font-size: clamp(80px, 22vw, 360px); font-weight:200; letter-spacing:0.05em;
+    color:#e8eef7; text-shadow: 0 0 30px rgba(96,165,250,0.3); font-variant-numeric: tabular-nums; }
+  .date { font-size: clamp(20px, 3vw, 48px); color:#94a3b8; margin-top:0.5em; letter-spacing:0.1em; }
+  .week { color:#60a5fa; margin-right:0.5em; }
+  .lunar { font-size: clamp(14px, 2vw, 28px); color:#64748b; margin-top:0.3em; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="time" id="time">--:--:--</div>
+  <div class="date" id="date"><span class="week" id="week"></span><span id="full"></span></div>
+  <div class="lunar" id="lunar"></div>
+</div>
+<script>
+const WEEKS = ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"];
+function pad(n) { return n < 10 ? "0" + n : "" + n; }
+function tick() {
+  const d = new Date();
+  const h = pad(d.getHours()), m = pad(d.getMinutes()), s = pad(d.getSeconds());
+  document.getElementById("time").textContent = h + ":" + m + ":" + s;
+  document.getElementById("week").textContent = WEEKS[d.getDay()];
+  document.getElementById("full").textContent =
+    d.getFullYear() + "年" + pad(d.getMonth()+1) + "月" + pad(d.getDate()) + "日";
+  document.getElementById("lunar").textContent = "";
+}
+tick();
+setInterval(tick, 1000);
+// 点击页面手动同步刷新（防止挂起）
+document.addEventListener("visibilitychange", function() {
+  if (!document.hidden) tick();
+});
+</script>
+</body>
+</html>

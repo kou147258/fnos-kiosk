@@ -55,6 +55,7 @@ function newPage() {
     type: "url",
     url: "https://example.com",
     path: "",
+    template: "clock",
     mode: "cycle",
     refresh_seconds: 0,
     zoom: 1.0,
@@ -83,7 +84,8 @@ function renderPageList() {
     row2.className = "row";
     var lab2 = document.createElement("span"); lab2.className = "label-mini"; lab2.textContent = "类型";
     var sel = document.createElement("select");
-    [["url", "远程 URL"], ["html_file", "本地 HTML"], ["media_file", "媒体文件（图片/视频）"]].forEach(function (o) {
+    [["url", "🌐 远程 URL"], ["html_file", "📝 本地 HTML"], ["media_file", "🎬 媒体文件（图片/视频）"],
+     ["template", "✨ 内置模板"]].forEach(function (o) {
       var op = document.createElement("option");
       op.value = o[0]; op.textContent = o[1];
       if (p.type === o[0]) op.selected = true;
@@ -121,8 +123,23 @@ function renderPageList() {
       var labU = document.createElement("span"); labU.className = "label-mini"; labU.textContent = "URL";
       var inU = document.createElement("input"); inU.type = "text"; inU.placeholder = "https://...";
       inU.value = p.url || "";
+      inU.setAttribute("list", "recent-urls");   // 自动补全历史 URL
       inU.addEventListener("input", function () { p.url = inU.value; });
       rowUrl.appendChild(labU); rowUrl.appendChild(inU);
+    } else if (p.type === "template") {
+      var labT = document.createElement("span"); labT.className = "label-mini"; labT.textContent = "模板";
+      var selT = document.createElement("select");
+      selT.style.cssText = "background:rgba(0,0,0,.3);color:var(--text);border:1px solid var(--card-brd);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;flex:1";
+      [["clock", "🕐 大字时钟"], ["weather", "🌤️ 实时天气（wttr.in）"],
+       ["sysinfo", "💻 系统状态（CPU/内存/磁盘/网络）"]].forEach(function (o) {
+        var op = document.createElement("option");
+        op.value = o[0]; op.textContent = o[1];
+        if (p.template === o[0]) op.selected = true;
+        selT.appendChild(op);
+      });
+      if (p.template) selT.value = p.template;
+      selT.addEventListener("change", function () { p.template = selT.value; });
+      rowUrl.appendChild(labT); rowUrl.appendChild(selT);
     } else {
       var labP = document.createElement("span"); labP.className = "label-mini"; labP.textContent = "文件";
       var sel2 = document.createElement("select");
@@ -485,6 +502,33 @@ document.getElementById("btn-local-new").addEventListener("click", function () {
   document.getElementById("local-content").value =
     "<!DOCTYPE html>\n<html>\n<head><meta charset=\"UTF-8\">\n" +
     "<title>新页面</title>\n<style>\nbody{margin:0;padding:24px;background:#0e1013;color:#e7eaf0;font-family:sans-serif}\nh1{margin-top:0}\n</style></head>\n<body>\n<h1>Hello Kiosk</h1>\n<p>这是示例本地页面。编辑后保存即可引用。</p>\n</body></html>";
+});
+
+// ---------- 配置导入 / 导出 ----------
+document.getElementById("btn-config-export").addEventListener("click", function () {
+  window.location.href = "api/config/export";
+});
+document.getElementById("btn-config-import").addEventListener("click", function () {
+  document.getElementById("config-import-file").click();
+});
+document.getElementById("config-import-file").addEventListener("change", function (e) {
+  var f = e.target.files && e.target.files[0];
+  if (!f) return;
+  if (!confirm("确认用 " + f.name + " 替换当前配置？\n（已上传的文件不会被覆盖；仅页面 + 设置被替换）")) {
+    e.target.value = "";
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function () {
+    api("POST", "api/config/import", { config: reader.result })
+      .then(function (j) {
+        toast("已导入 " + (j.msg || ""));
+        bindConfig();      // 重新拉配置
+      })
+      .catch(function (err) { toast(err.message || "导入失败", true); });
+  };
+  reader.readAsText(f, "utf-8");
+  e.target.value = "";
 });
 
 // ---------- 上传（图片/视频/HTML） ----------
@@ -918,6 +962,18 @@ function loadLocalFiles() {
     renderLocalList();
   });
 }
+function loadRecentUrls() {
+  return api("GET", "api/recent-urls").then(function (j) {
+    var dl = document.getElementById("recent-urls");
+    if (!dl) return;
+    dl.textContent = "";
+    (j.urls || []).slice(0, 20).forEach(function (u) {
+      var op = document.createElement("option");
+      op.value = u;
+      dl.appendChild(op);
+    });
+  }).catch(function () {});
+}
 function loadFbInfo() {
   return api("GET", "api/fb/info").then(function (j) {
     renderFbInfo(j.fb);
@@ -929,7 +985,7 @@ function loadAll() {
     cfg = j.config;
     fillFromCfg();
     renderPageList();
-  }).then(loadLocalFiles).then(loadFbInfo);
+  }).then(loadLocalFiles).then(loadFbInfo).then(loadRecentUrls);
 }
 
 bindConfig();

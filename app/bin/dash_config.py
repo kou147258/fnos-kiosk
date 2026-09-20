@@ -184,6 +184,7 @@ class Config:
         self.path = etc_path if _writable_dir(os.path.dirname(etc_path)) \
             else os.path.join(var_dir, "config.json")
         self._lock = threading.Lock()
+        self._on_url_saved = (lambda u: None)  # 由 dash_http 注入
         self._data = self._load()
 
     def _load(self):
@@ -349,4 +350,14 @@ class Config:
             except OSError as e:
                 return False, "配置写入失败：%s" % e
             self._data = data
+        # 记录最近使用的 URL（settings 端可以读）
+        try:
+            seen = set()
+            for p in (data.get("pages") or []):
+                if p.get("type") == "url" and p.get("url"):
+                    if p["url"] not in seen:
+                        seen.add(p["url"])
+                        self._on_url_saved(p["url"])
+        except Exception:
+            pass
         return True, ""
