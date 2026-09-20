@@ -22,8 +22,9 @@ app/ui/images/icon-256.png
 app/web/images/icon-64.png
 app/web/images/icon-256.png
 
-# fnpack 输出
+# fnpack 输出（com.fnos.kiosk.fpk 例外：要随仓库发布，方便 raw 访问）
 *.fpk
+!com.fnos.kiosk.fpk
 
 # 本地预览临时
 .local/
