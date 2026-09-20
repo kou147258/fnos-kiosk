@@ -68,13 +68,88 @@ FONT_LATIN_CANDIDATES = (
     "/System/Library/Fonts/Menlo.ttc",
     "/System/Library/Fonts/Helvetica.ttc",
 )
+# 候选 CJK 字体（按优先级）。实际路径在不同发行版差异极大，
+# 下面的 _discover_cjk_font() 会先扫一遍 /usr/share/fonts/ 找更准的。
 FONT_CJK_CANDIDATES = (
-    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/truetype/arphic/uming.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     "/System/Library/Fonts/PingFang.ttc",
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
 )
+
+
+def _discover_cjk_font():
+    """扫整个 /usr/share/fonts/ 找真·Latin+CJK 字体。
+
+    .ttc 是字体集合，PIL 默认只加载第一个（常常是 CJK Symbols 子集，
+    没有 ASCII）。优先找 .otf/.ttf 单字体（含 Latin）；
+    .ttc 则优先选择文件名包含 Sans（无衬线，通常含 ASCII）且
+    不带 Symbols/Emoji 的。
+    """
+    roots = ("/usr/share/fonts", "/usr/local/share/fonts",
+             "/Library/Fonts", "/System/Library/Fonts")
+    exts = (".ttf", ".otf")
+    found = []
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _, filenames in os.walk(root):
+            for fn in filenames:
+                low = fn.lower()
+                if not any(low.endswith(e) for e in exts):
+                    continue
+                # 跳过明确的非 CJK 字体（除非没找到别的）
+                skip_keywords = ("mono", "italic", "bold", "light",
+                                 "thin", "black", "condensed")
+                if any(k in low for k in skip_keywords):
+                    continue
+                # 优先 cjk / noto / sans / hei / 微米黑 / 黑体
+                if any(k in low for k in ("cjk", "noto", "sans",
+                                          "hei", "uming", "ukai")):
+                    found.insert(0, os.path.join(dirpath, fn))
+                else:
+                    found.append(os.path.join(dirpath, fn))
+    # .ttc 次之（可能是 CJK Symbols-only 的集合）
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _, filenames in os.walk(root):
+            for fn in filenames:
+                low = fn.lower()
+                if low.endswith(".ttc") and any(k in low for k in (
+                        "cjk", "noto", "wqy", "uming", "pingfang")):
+                    found.append(os.path.join(dirpath, fn))
+    return found[0] if found else ""
+
+
+def _pick_cjk_font_path():
+    """先扫盘 + fc-list，再退回硬编码候选。"""
+    discovered = _discover_cjk_font()
+    if discovered:
+        return discovered
+    # fc-list（Debian/Ubuntu fontconfig 默认提供）
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["fc-list", ":lang=zh", "file"],
+            capture_output=True, text=True, timeout=3)
+        for line in (r.stdout or "").splitlines():
+            line = line.strip().rstrip(":")
+            if line and line.lower().endswith((".ttf", ".otf", ".ttc")):
+                return line
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # 硬编码候选兜底
+    for p in FONT_CJK_CANDIDATES + FONT_LATIN_CANDIDATES:
+        if os.path.exists(p):
+            return p
+    return ""
 
 
 # --------------------------------------------------------------------------
@@ -431,12 +506,10 @@ def main():
         from PIL import Image, ImageDraw, ImageFont
         _diag_img = Image.new("RGB", (W, H), (10, 19, 34))
         _diag_draw = ImageDraw.Draw(_diag_img)
-        _font_path = None
-        # 优先用 CJK 字体（启动屏里有中文）
-        for _fp in FONT_CJK_CANDIDATES + FONT_LATIN_CANDIDATES:
-            if os.path.exists(_fp):
-                _font_path = _fp
-                break
+        # 智能选字体：扫盘 + fc-list，避开硬编码路径假设
+        _font_path = _pick_cjk_font_path()
+        if _font_path:
+            print("[fb] 选用字体: %s" % _font_path, flush=True)
         _font_big = ImageFont.truetype(_font_path, max(32, W // 22)) if _font_path else None
         _font_sm = ImageFont.truetype(_font_path, max(18, W // 40)) if _font_path else None
         _lines = [
@@ -513,12 +586,8 @@ def main():
             from PIL import Image, ImageDraw, ImageFont
             img = Image.new("RGB", (W, H), (40, 10, 10))
             d = ImageDraw.Draw(img)
-            # 强制使用 CJK 字体（错误屏里大量中文，Latin 字体会显示空白）
-            _fp = None
-            for _p in FONT_CJK_CANDIDATES + FONT_LATIN_CANDIDATES:
-                if os.path.exists(_p):
-                    _fp = _p
-                    break
+            # 智能选字体（扫盘 + fc-list，不依赖硬编码路径）
+            _fp = _pick_cjk_font_path()
             f_big = ImageFont.truetype(_fp, max(28, W // 24)) if _fp else None
             f_sm = ImageFont.truetype(_fp, max(18, W // 38)) if _fp else None
             d.rectangle([(0, 0), (W, H)], outline=(248, 113, 113), width=4)
@@ -578,6 +647,15 @@ def main():
             err_detail = str(e)[:200]
             print("[fb] %s，将在 %ds 后重试：%r"
                   % (err_msg, delay, e), flush=True)
+            # 如果是「未找到 chromium」类错误，把详细诊断打到 fb.log
+            if "未找到 chromium" in err_detail:
+                try:
+                    from dash_browser import find_chromium
+                    _, finfo = find_chromium()
+                    for e2 in finfo["errors"]:
+                        print("[fb]   查找: %s" % e2, flush=True)
+                except Exception:
+                    pass
             _write_error_screen(err_msg, err_detail)
             try:
                 browser.close()

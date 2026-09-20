@@ -256,30 +256,40 @@ class Handler(BaseHTTPRequestHandler):
             _log("restart: 未拉起（缺少 %s）" % fb_bin)
             return
         port = self.http_port
+        # CDP 端口优先从环境变量 KIOSK_CDP_PORT 取，否则用 service_port + 1023
+        try:
+            cdp_port = int(os.environ.get("KIOSK_CDP_PORT") or (port + 1023))
+        except (TypeError, ValueError):
+            cdp_port = port + 1023
+        # 日志文件：先尝试 var/fb.log；权限不够就用临时文件（fnpack 可能没给 var/ 写权限）
         log_path = os.path.join(self.var_dir, "fb.log")
         try:
             log = open(log_path, "ab")
-            # CDP 端口优先从环境变量 KIOSK_CDP_PORT 取，否则用 service_port + 1023
-            # （service_port=8280 → CDP=10303；service_port=9500 → CDP=10523）。
-            # 这是为了让 service_port 改了之后 CDP 端口自动跟着变。
+        except OSError:
             try:
-                cdp_port = int(os.environ.get("KIOSK_CDP_PORT") or (port + 1023))
-            except (TypeError, ValueError):
-                cdp_port = port + 1023
+                log = open(os.path.join(self.var_dir, "fb_restart.log"), "ab")
+            except OSError:
+                log = subprocess.DEVNULL
+        try:
             proc = subprocess.Popen(
                 [sys.executable, fb_bin, "--fb", "/dev/fb0",
                  "--api", "http://127.0.0.1:%d" % port,
                  "--cdp-port", str(cdp_port)],
                 stdout=log, stderr=log, stdin=subprocess.DEVNULL,
                 start_new_session=True)
-            log.close()
+            _log("restart: 已拉起渲染进程 pid=%d (cdp=%d)"
+                 % (proc.pid, cdp_port))
+            with open(pid_file, "w") as f:
+                f.write(str(proc.pid))
         except OSError as e:
             _log("restart: 拉起失败 %r" % e)
             return
-        _log("restart: 已拉起渲染进程 pid=%d (%s)"
-             % (proc.pid, sys.executable))
-        with open(pid_file, "w") as f:
-            f.write(str(proc.pid))
+        finally:
+            if log is not subprocess.DEVNULL:
+                try:
+                    log.close()
+                except OSError:
+                    pass
 
     def _profile_dir(self):
         """计算 Chromium profile 实际路径。"""

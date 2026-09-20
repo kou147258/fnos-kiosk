@@ -210,7 +210,9 @@ class WSClient:
 
 
 def find_chromium(custom_path=""):
-    """按 custom_path → 常见安装路径 → PATH 顺序查找 Chromium。"""
+    """按 custom_path → 常见安装路径 → PATH 顺序查找 Chromium。
+    返回值：（exe_path, info_dict）；找不到时 exe_path 为空，info_dict 含诊断信息。"""
+    info = {"checked": [], "found": "", "errors": []}
     candidates = []
     if custom_path:
         candidates.append(custom_path)
@@ -219,14 +221,31 @@ def find_chromium(custom_path=""):
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
         "/snap/bin/chromium",
+        "/usr/bin/chromium-snapper",
     ]
     which = shutil.which("chromium") or shutil.which("chromium-browser")
     if which:
         candidates.append(which)
+    info["checked"] = candidates
     for c in candidates:
-        if os.path.isfile(c) and os.access(c, os.X_OK):
-            return c
-    return ""
+        if not os.path.exists(c):
+            info["errors"].append("%s: 不存在" % c)
+            continue
+        if not os.path.isfile(c):
+            info["errors"].append("%s: 不是文件" % c)
+            continue
+        if not os.access(c, os.X_OK):
+            info["errors"].append("%s: 当前进程无执行权限" % c)
+            continue
+        info["found"] = c
+        return c, info
+    return "", info
+
+
+def find_chromium_simple(custom_path=""):
+    """只返回路径字符串的便捷包装（向后兼容）。"""
+    path, _ = find_chromium(custom_path)
+    return path
 
 
 class Browser:
@@ -256,10 +275,13 @@ class Browser:
 
     # ---- 启动 ----
     def start(self, log_path=None):
-        exe = find_chromium(self.chromium_path)
+        exe, finfo = find_chromium(self.chromium_path)
         if not exe:
-            raise RuntimeError("未找到 chromium/chromium-browser；"
-                               "请安装 apt install -y chromium 或在设置中指定 browser_path")
+            raise RuntimeError(
+                "未找到 chromium/chromium-browser；"
+                "检查路径：" + ", ".join(finfo["checked"]) + "；"
+                "错误：" + " | ".join(finfo["errors"][:5]) +
+                "。请 sudo apt install -y chromium 或在设置中指定 browser_path")
         args = [
             exe,
             "--headless=new",
@@ -292,14 +314,28 @@ class Browser:
             "--remote-debugging-address=127.0.0.1",
             "about:blank",
         ]
-        log = open(log_path, "ab") if log_path else subprocess.DEVNULL
+        log_path_actual = log_path
+        if log_path:
+            try:
+                log = open(log_path, "ab")
+            except OSError:
+                # fb_chromium.log 打不开时退化到 fb.log
+                try:
+                    alt = os.path.join(os.path.dirname(log_path) or ".",
+                                       "fb.log")
+                    log = open(alt, "ab")
+                    log_path_actual = alt
+                except OSError:
+                    log = subprocess.DEVNULL
+        else:
+            log = subprocess.DEVNULL
         try:
             self.proc = subprocess.Popen(
                 args, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=log,
                 start_new_session=True)
         finally:
-            if log_path and hasattr(log, "close"):
+            if log is not subprocess.DEVNULL:
                 try:
                     log.close()
                 except OSError:
