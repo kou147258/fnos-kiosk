@@ -327,6 +327,7 @@ class BrowserCanvas:
         self._loaded_at = 0.0
         self._last_screenshot_ok = False
         self._error_msg = ""
+        self._fit_mode = "contain"  # cover/contain/stretch，主循环刷新
 
     def set_page(self, page):
         self._page = page
@@ -334,15 +335,33 @@ class BrowserCanvas:
         self._loaded_at = 0.0  # 触发下次 begin() 重新导航
 
     def _render_background(self, pil_img):
-        """把浏览器截屏按 fb 尺寸自适应填到画布底层（保持比例）。"""
+        """把浏览器截屏按 fb 尺寸填充画布底层。
+
+        fit 模式（cfg.get('display_fit', 'contain')）：
+          - 'contain' (默认): 等比缩放 + 居中，整页可见，多余区域填黑边
+          - 'cover':        等比缩放 + 裁切，铺满 fb（适合背景图）
+          - 'stretch':      强制拉伸到 fb 尺寸（不顾比例，可能变形）
+        """
         bw, bh = pil_img.size
+        fit_mode = (self._fit_mode or "contain").lower() if hasattr(
+            self, "_fit_mode") else "contain"
+        if fit_mode == "stretch":
+            # 强制拉伸
+            if (bw, bh) != (self.w, self.h):
+                pil_img = pil_img.resize((self.w, self.h),
+                                          self._Image.LANCZOS)
+            self.img.paste(pil_img, (0, 0))
+            return
         if bw == self.w and bh == self.h:
             self.img.paste(pil_img, (0, 0))
             return
-        # 等比缩放到 fb 全覆盖（cover 模式）
         sx = self.w / bw
         sy = self.h / bh
-        s = max(sx, sy)
+        if fit_mode == "cover":
+            s = max(sx, sy)
+        else:
+            # contain（默认）
+            s = min(sx, sy)
         nw, nh = max(1, int(round(bw * s))), max(1, int(round(bh * s)))
         resized = pil_img.resize((nw, nh), self._Image.LANCZOS)
         ox = (self.w - nw) // 2
@@ -821,6 +840,10 @@ def main():
                     pass
 
             new_rotate = cfg.get("fb_rotate") if cfg.get("fb_rotate") in (0, 90, 180, 270) else 0
+            # display_fit 热加载（不需要重启 Chromium）
+            canvas._fit_mode = (cfg.get("display_fit") or "contain").lower()
+            if canvas._fit_mode not in ("contain", "cover", "stretch"):
+                canvas._fit_mode = "contain"
             if new_rotate != rotate:
                 rotate = new_rotate
                 # 浏览器窗口尺寸在 rotate 变化时无需重启（截屏在 PIL 端旋转）

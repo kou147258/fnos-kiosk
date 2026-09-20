@@ -1,42 +1,35 @@
-v0.1.12: 内置远程控制 tab（告别 chrome://inspect / SSH）
+v0.1.13: 画面适配三种模式 + Scale 13 档
 
-用户反馈：「这个还是太复杂了，能直接在这个应用里面加上一个内置浏览器么」
+## 用户反馈
+「屏幕显示能自适应不？目前好像不能自适应显示，部分显示超出显示器了。
+ 缩放挡位也只有3」
 
-## 实现
+## 修复
 
-1. **app/bin/cdp_proxy.py**：独立 CDP 客户端，复用 dash_browser 的 RFC 6455 实现（避免重复实现 WebSocket）。包含：
-   - connect / close / 自动重连
-   - screenshot（Page.captureScreenshot）
-   - click / mouse_move / scroll（Input.dispatchMouseEvent）
-   - type_text（Input.insertText 直接打字符串）
-   - key_press（特殊键 Enter/Tab/Esc/Backspace/方向键 等）
-   - navigate / eval_js
+### 1. display_fit 三种模式
 
-2. **dash_http.py**：7 个新 API（延迟 init cdp_proxy 实例，断线自动重连）
-   - GET /api/fb/live.png — 二进制 PNG 截图
-   - GET /api/fb/live.json — 当前 URL + title
-   - POST /api/fb/click — {x, y}
-   - POST /api/fb/type — {text}
-   - POST /api/fb/key — {key, modifiers}
-   - POST /api/fb/scroll — {x, y, deltaX, deltaY}
-   - POST /api/fb/go — {url}
-   - POST /api/fb/eval — {expression}
+之前默认 cover（填满 fb + 裁切）。当 chromium 截图 1920x1080
+填到 fb0 1024x768 时，左右各被裁掉 170px——内容溢出屏外。
 
-3. **settings.html + settings.js + settings.css**：新增「🔍 远程控制」tab
-   - 1fps 自动刷新截图（可关）
-   - 点击截图 → 自动换算 Chromium 视口坐标 → 点击
-   - 鼠标滚轮支持
-   - URL 栏 + 跳转按钮
-   - 文本输入框 + 「输入」/「输入+回车」按钮
-   - 特殊键按钮 Tab / Enter / Esc / ⌫ / Del / Space / ↑↓←→
+新增 display_fit 配置：
+- contain (默认，整页可见，多余区域填黑边) — 推荐
+- cover (铺满 fb，等比放大裁切) — 适合背景图
+- stretch (强制拉伸到 fb 尺寸，可能变形)
 
-## 用户体验改进
+主循环里热加载 display_fit，不需要重启 fb_render。
 
-登录 HA / Grafana / 自建面板 不需要 chrome://inspect 或 SSH 隧道：
-1. 设置页 → 「🔍 远程控制」tab
-2. 看截图，**点截图聚焦目标输入框**
-3. 下方输入账号密码 → 点「输入 + 回车」
-4. 登录态写入 Chromium profile
-5. 关闭远程控制 tab，副屏自动显示已登录的页面
+### 2. Scale 13 档
 
-安全：所有路由都受 127.0.0.1 限制（settings 页本身就只允许本机访问）
+之前只有 1.0 / 1.25 / 1.5 / 2.0 四档。扩展到：
+0.5 / 0.67 / 0.75 / 0.85 / 1.0 / 1.15 / 1.25 / 1.5 / 1.75
+/ 2.0 / 2.5 / 3.0 / 4.0
+
+适合各种 DPI 的 NAS 副屏。
+
+## 改动文件
+
+- app/bin/fb_render.py — _render_background 加 fit_mode 参数
+  (cover/contain/stretch)
+- app/bin/dash_config.py — display_fit 白名单 + 默认 contain
+- app/web/settings.html — 画面适配模式 seg + 13 档 Scale
+- app/web/assets/settings.js — seg-fit 点击 + display_fit 回填

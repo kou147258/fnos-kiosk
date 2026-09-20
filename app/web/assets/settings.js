@@ -229,6 +229,14 @@ document.getElementById("seg-rotate").addEventListener("click", function (e) {
   cfg.fb_rotate = parseInt(b.dataset.v, 10);
 });
 
+document.getElementById("seg-fit").addEventListener("click", function (e) {
+  var b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#seg-fit button").forEach(function (x) { x.classList.remove("active"); });
+  b.classList.add("active");
+  cfg.display_fit = b.dataset.v;
+});
+
 function renderAuthInfo(info) {
   // 在「浏览器」tab 顶部展示登录态信息
   var stateEl = document.getElementById("auth-state");
@@ -781,6 +789,9 @@ function fillFromCfg() {
   // seg
   document.querySelectorAll("#seg-rotate button").forEach(function (b) {
     b.classList.toggle("active", parseInt(b.dataset.v, 10) === (cfg.fb_rotate || 0));
+  });
+  document.querySelectorAll("#seg-fit button").forEach(function (b) {
+    b.classList.toggle("active", b.dataset.v === (cfg.display_fit || "contain"));
   });
   document.querySelectorAll("#seg-mode button").forEach(function (b) {
     b.classList.toggle("active", b.dataset.v === (cfg.default_mode || "cycle"));

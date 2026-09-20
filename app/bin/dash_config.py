@@ -96,6 +96,7 @@ DEFAULT_CONFIG = {
     "rotate_seconds": 30,
     "fb_enabled": False,
     "fb_rotate": 0,
+    "display_fit": "contain",
     "screen_inches": 0,
     "browser_path": "",        # 自定义 chromium 路径（空则自动找）
     "browser_window": [1920, 1080],   # 浏览器视口尺寸（与 fb 实际分辨率尽量匹配，缩放精度更好）
@@ -282,6 +283,11 @@ class Config:
             if rotate not in (0, 90, 180, 270):
                 return False, "显示方向仅支持 0/90/180/270"
             clean["fb_rotate"] = rotate
+        if "display_fit" in patch:
+            v = str(patch["display_fit"] or "").lower()
+            if v not in ("contain", "cover", "stretch"):
+                return False, "画面适配模式仅支持 contain/cover/stretch"
+            clean["display_fit"] = v
         if "fb_enabled" in patch:
             clean["fb_enabled"] = bool(patch["fb_enabled"])
         if "hide_cursor" in patch:
