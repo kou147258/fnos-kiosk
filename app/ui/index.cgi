@@ -1,9 +1,24 @@
 #!/bin/sh
 # fnOS CGI 入口：把 /cgi/ThirdParty/com.fnos.kiosk/index.cgi/ 下的请求
 # 反向代理到本机 kiosk 服务（fnOS 校验 NAS 登录态后才执行本脚本）。
-# 实现参照 fn-knock 的公开实现（apps/fn-knock/app/ui/index.cgi）。
+#
+# 端口解析优先级：
+#   1. TRIM_SERVICE_PORT 环境变量（fnOS 在启动 cmd/* 时注入）
+#   2. ${TRIM_PKGVAR:-/var/apps/com.fnos.kiosk/var}/port.txt（cmd/main 写入）
+#   3. ${TRIM_SERVICE_PORT:-8280}（兜底，与 manifest service_port=8280 对齐）
+#
+# 历史上曾只用兜底 8200，结果在某些 NAS 上 8200 被 MiniDLNA 占用，
+# 导致 CGI 把请求代理到 MiniDLNA，用户打开「浏览器屏」看到 DLNA 状态页。
+# 现已修复：默认改 8280 + 优先读 cmd/main 写入的实际端口。
 TARGET_HOST=127.0.0.1
-TARGET_PORT=${TRIM_SERVICE_PORT:-8200}
+PKGVAR_DIR=${TRIM_PKGVAR:-/var/apps/com.fnos.kiosk/var}
+if [ -f "$PKGVAR_DIR/port.txt" ]; then
+    TARGET_PORT=$(cat "$PKGVAR_DIR/port.txt" 2>/dev/null | tr -d '[:space:]')
+fi
+if [ -z "$TARGET_PORT" ] || [ "$TARGET_PORT" = "8200" ]; then
+    # 没文件 + 不是显式设 8200 → 走 TRIM_SERVICE_PORT → 兜底 8280
+    TARGET_PORT=${TRIM_SERVICE_PORT:-8280}
+fi
 
 REQ_URI=${REQUEST_URI:-"/"}
 URI_NO_QUERY=${REQ_URI%%\?*}

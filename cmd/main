@@ -62,6 +62,9 @@ start_backend() {
         return 1
     fi
     mkdir -p "$VAR_DIR" "$ETC_DIR"
+    # 把实际端口写到 port.txt，让 CGI 入口脚本能读到（fnOS 在 CGI 上下文
+    # 不一定会注入 TRIM_SERVICE_PORT，而 MiniDLNA 也常驻 8200，兜底太危险）
+    printf '%s\n' "$PORT" > "$VAR_DIR/port.txt"
     rm -f "${APP_DIR}/app.sock"
     nohup python3 "$APP_BIN" \
         --host 0.0.0.0 \
