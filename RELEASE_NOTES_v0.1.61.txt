@@ -1,0 +1,30 @@
+v0.1.61 (2026-09-21)
+
+修复：URL dashboard 底部留空（cover 模式 chromium 内容只占 640/720）
+
+v0.1.60 解决了列数问题（强制 chromium DPR=1.0 + Emulation.setDeviceMetricsOverride）后，
+dashboard 在 1280×720 chromium viewport 里以 3 列 × 2 行 6 张完整呈现。但 fb0 截图里底部
+仍然有一道 ~5-8% 的「黑条」（实际是 dashboard 自己的 body 背景色 `#0a1322` 深蓝，被
+PIL cover 等比铺到 fb 上留下的未填充区域）。
+
+v0.1.61 修复：URL 页 `display_fit` 从 `cover` 改为 `stretch`：
+
+| | chromium | fb0 |
+|---|---|---|
+| v0.1.60 cover | 1280×720 → PIL cover scale max = 1.067 → 1365×768 → 居中裁切 1024×768 | 横向填满，dashboard 高度 = chromium 704px（6 卡 + header + padding），fb 768 高度剩 64px 是 dashboard 自身 body bg = 「黑条」 |
+| v0.1.61 stretch | 1280×720 → PIL stretch 0.8×1.067 直接拉到位 1024×768 | **fb 完全填满**，dashboard cards 整体被纵向拉 7%，是 dashboard body bg 整套由 720 拉到 768 视觉差异小，cards 比例跟桌面 reference 趋近 |
+
+——非 URL 页（媒体文件、本地 HTML）的 `display_fit` 不变，仍按用户配置（默认 stretch）。
+
+如果 stretch 让你觉得 cards 拉伸失真，下次可以 `url_viewport_size: [1280, 880]` 拉大 viewport
+高度，PIL stretch 768/880=0.87 几乎不拉伸 cards。
+
+变更文件：
+- app/bin/fb_render.py   (canvas._fit_mode = "stretch" 覆盖 URL 页路径；覆盖 page_fit 优先)
+- app/bin/dash_config.py (版本号 0.1.60 → 0.1.61)
+- manifest               (version=0.1.61)
+- com.fnos.kiosk.fpk     (重打包)
+
+FPK SHA256：D4A5ABE9418F404C13898D10E63A727D6F9F672EB3833BD02CC8D11594E725E1
+
+完整变更日志：https://github.com/kou147258/fnos-kiosk/commits/master
