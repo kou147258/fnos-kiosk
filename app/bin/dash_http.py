@@ -226,8 +226,11 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         deadline = time.time() + 2
         while time.time() < deadline:
+            # Linux/macOS: 用 WNOHANG 非阻塞回收 zombie。Windows 上 os.WNOHANG 不存在，
+            # 干脆跳过 reap（Windows 进程树靠 Job Object 自动清理，不影响后续 fork）。
             try:
-                os.waitpid(-1, os.WNOHANG)
+                if hasattr(os, "WNOHANG"):
+                    os.waitpid(-1, os.WNOHANG)
             except (ChildProcessError, OSError):
                 pass
             if not _scan_renderers():
