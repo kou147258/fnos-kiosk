@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.44"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.46"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -141,7 +141,8 @@ DEFAULT_CONFIG = {
     "display_zoom": 1.0,       # URL 页面缩放（1.0=原始，>1 放大（页面 CSS 像素更少 → 内容看起来更大），<1 缩小）
     "screen_inches": 0,
     "browser_path": "",        # 自定义 chromium 路径（空则自动找）
-    "browser_window": "match_fb",   # 浏览器视口尺寸；"match_fb" 自动等于 fb0 物理分辨率（推荐）；或 [w, h]
+    "browser_window": "match_dashboard",  # v0.1.46 默认改为 match_dashboard（16:9 viewport，让 URL 页填满 fb0）
+                                            # 可选："match_dashboard" / "match_fb_wide" / "match_fb" / [w, h]
     "browser_scale": 1.0,      # 设备像素比（HiDPI 屏可调 1.5/2.0 让字体更清晰）
     "browser_timeout": 30,     # Page.navigate 超时秒
     "chromium_profile_dir": "", # 自定义 profile 路径（留空 = var/chromium-profile，自动持久化）
@@ -282,6 +283,41 @@ class Config:
                                     cur or "default"))
                 except OSError:
                     pass
+        # v0.1.46: 一次性迁移 browser_window。
+        # 旧 _sanitize 把"match_fb_wide" 字符串误判清洗成 [1920, 1080] 列表默认值，
+        # 导致 Chromium viewport 变成 1920x1080，dashboard 16:9 设计在 fb 上只剩
+        # 1024x576 + 下方 192px 黑边。检测到 list 值且为默认 [1920, 1080] 时迁移
+        # 到 match_dashboard（16:9 viewport，无黑边填满 fb）。
+        bw_marker = os.path.join(self.var_dir, ".migrated_to_match_dashboard")
+        bw = data.get("browser_window")
+        if not os.path.isfile(bw_marker):
+            if isinstance(bw, list) and len(bw) == 2 and \
+                    bw[0] == 1920 and bw[1] == 1080:
+                data["browser_window"] = "match_dashboard"
+                try:
+                    with open(bw_marker, "w", encoding="utf-8") as f:
+                        f.write("v0.1.46 migration: browser_window [1920,1080] -> match_dashboard\n")
+                except OSError:
+                    pass
+                # 顺手落盘
+                try:
+                    tmp = self.path + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(self._sanitize(data), f,
+                                  ensure_ascii=False, indent=2)
+                    os.replace(tmp, self.path)
+                except OSError:
+                    pass
+                # 落 fb.log
+                for _lp in ("fb.log",):
+                    try:
+                        import time as _t
+                        with open(os.path.join(self.var_dir, _lp), "a",
+                                  encoding="utf-8") as _f:
+                            _f.write("[config %s] migration: browser_window [1920,1080] -> match_dashboard (URL 页面填满 fb0 无黑边)\n"
+                                     % _t.strftime("%m-%d %H:%M:%S"))
+                    except OSError:
+                        pass
         return data
 
     def _merge_files(self, paths):
@@ -316,9 +352,24 @@ class Config:
         out["browser_scale"] = _clip_float(out.get("browser_scale"), 0.5, 3.0, 1.0)
         out["display_zoom"] = _clip_float(out.get("display_zoom"), 0.5, 3.0, 1.0)
         # 视口
-        win = out.get("browser_window") or "match_fb"
-        if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
-            out["browser_window"] = "match_fb"
+        # v0.1.46: 接受 4 种预设 + [w, h] 列表：
+        #   match_dashboard（v0.1.45+ 默认，dashboard 自然 16:9，填满 fb 无黑边）
+        #   match_fb_wide（v0.1.42-44 默认，fb 长宽比 ×1.25，dashboard 设计成 100vh 时无黑边）
+        #   match_fb（早期默认，fb 物理分辨率，截图即填满）
+        #   16:9 / wide16（match_dashboard 别名）
+        #   wide / 1.25x（match_fb_wide 别名）
+        win = out.get("browser_window") or "match_dashboard"
+        if isinstance(win, str):
+            wl = win.lower()
+            if wl in ("match_dashboard", "16:9", "wide16"):
+                out["browser_window"] = "match_dashboard"
+            elif wl in ("match_fb_wide", "wide", "1.25x"):
+                out["browser_window"] = "match_fb_wide"
+            elif wl in ("match_fb", "fb", "auto"):
+                out["browser_window"] = "match_fb"
+            else:
+                # 未知字符串（很可能是 v0.1.42 之前的旧值，比如 "wide" 等） → 走默认
+                out["browser_window"] = "match_dashboard"
         else:
             if not (isinstance(win, list) and len(win) == 2):
                 win = [1920, 1080]

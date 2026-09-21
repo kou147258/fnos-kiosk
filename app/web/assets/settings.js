@@ -949,7 +949,24 @@ function loadAll() {
     cfg = j.config;
     fillFromCfg();
     renderPageList();
-  }).then(loadLocalFiles).then(loadFbInfo).then(loadRecentUrls);
+  }).then(loadLocalFiles).then(loadFbInfo).then(loadRecentUrls)
+    .then(checkCjkFonts);  // v0.1.46: CJK 字体检测 → 警告横幅
+}
+
+// v0.1.46: 检查 CJK 字体，没装就显示警告横幅
+function checkCjkFonts() {
+  return api("GET", "api/sysinfo/cjk-fonts").then(function (j) {
+    var cjk = (j && j.cjk) || {};
+    var banner = document.getElementById("cjk-warn-banner");
+    if (!banner) return;
+    if (cjk.installed === false) {
+      banner.style.display = "block";
+    } else {
+      banner.style.display = "none";
+    }
+  }).catch(function () {
+    /* 静默失败：检测 API 失败不影响其他功能 */
+  });
 }
 
 bindConfig();

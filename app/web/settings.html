@@ -135,6 +135,11 @@
 
       <!-- ===== 浏览器 ===== -->
       <section id="tab-browser" class="tab">
+        <!-- v0.1.46: CJK 字体告警横幅（如果系统没装 CJK 字体，URL 页面中文会显示 □） -->
+        <div id="cjk-warn-banner" class="warn-banner" style="display:none">
+          <b>⚠ 中文字体未安装</b> —— URL 页面里的中文会显示成 □。<br>
+          在 NAS 上 SSH 执行 <code>apt install fonts-noto-cjk</code>（约 50MB，覆盖 7 万+ 汉字 + Latin），然后重启 kiosk。
+        </div>
         <h3>Chromium 路径</h3>
         <label class="field">可执行文件路径（留空自动检测）
           <input type="text" id="set-browser-path" class="text-input" placeholder="/usr/bin/chromium">
@@ -149,7 +154,7 @@
           <button data-v="1920,1080">1920×1080（16:9）</button>
           <button data-v="custom">自定义</button>
         </div>
-        <p class="hint"><b>16:9 viewport</b>（v0.1.45 默认）——窗口 = 16:9 比例（dashboard 自然长宽比），强制 dashboard 填满 viewport；PIL scale 到 4:3 fb 会有约 20% 水平 squish，<b>但整页无黑边</b>。<br><b>自适应显示器 ×1.25</b>（v0.1.42 默认）——窗口 = fb ×1.25（保持 fb 长宽比），dashboard 自适应填满 viewport，<b>dashboard 设计成 100vh 时无黑边</b>，否则上下可能有黑边。<br><b>严格匹配显示器</b>——窗口 = 显示器物理分辨率，截图即填满 fb。<br>选「自定义」可手动改下方宽高。</p>
+        <p class="hint"><b>16:9 viewport</b>（v0.1.46 默认）——窗口 = 16:9 比例（dashboard 自然长宽比），强制 dashboard 填满 viewport；PIL scale 到 4:3 fb 会有约 25% 水平 squish，<b>但整页无黑边</b>。<br><b>自适应显示器 ×1.25</b>（v0.1.42 默认）——窗口 = fb ×1.25（保持 fb 长宽比），dashboard 自适应填满 viewport，<b>dashboard 设计成 100vh 时无黑边</b>，否则上下可能有黑边。<br><b>严格匹配显示器</b>——窗口 = 显示器物理分辨率，截图即填满 fb。<br>选「自定义」可手动改下方宽高。<br><b>v0.1.46：</b>只要配置里有任意 <code>type=url</code> 页面，本设置会被忽略，强制用 16:9 viewport（保证 URL 页面填满 fb0，无视旧版本残留配置）。</p>
         <div class="row-2">
           <label class="field">宽度
             <input type="number" id="set-win-w" class="text-input" min="320" max="7680">

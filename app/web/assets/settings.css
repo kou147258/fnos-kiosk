@@ -183,6 +183,24 @@ body {
 .btn-mini:hover { border-color: var(--accent); }
 .btn-mini.danger { color: var(--danger); border-color: rgba(248, 113, 113, .3); }
 .btn-mini.danger:hover { border-color: var(--danger); }
+
+/* v0.1.46: CJK 字体告警横幅 */
+.warn-banner {
+  background: rgba(245, 158, 11, .12);
+  border: 1px solid rgba(245, 158, 11, .4);
+  color: #fcd34d;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 10px 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.warn-banner code {
+  background: rgba(0,0,0,.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #fff;
+}
 .btn-save {
   background: var(--accent); color: #fff;
   border: none; border-radius: 8px;

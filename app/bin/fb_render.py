@@ -154,6 +154,27 @@ def _pick_cjk_font_path():
     return ""
 
 
+def _has_cjk_font():
+    """检查系统是否有任何 CJK 字体（用于 URL 页面中文显示）。
+    返回 (installed, font_path_or_hint) —— 没装时给用户提示信息。"""
+    # 1. 扫盘 + fc-list
+    if _pick_cjk_font_path():
+        return True, ""
+    # 2. 检查 fc-list 是否非空（即便没找到中文 family，至少 fc-list 工作）
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["fc-list", ":lang=zh", "file"],
+            capture_output=True, text=True, timeout=3)
+        if r.stdout and r.stdout.strip():
+            # 有 CJK 但 _pick 没选上 —— 也算装了
+            return True, ""
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # 3. 完全没有中文支持
+    return False, "apt install fonts-noto-cjk  # Debian/Ubuntu 上安装 Noto CJK 字体（约 50MB，7万+ 汉字 + Latin）"
+
+
 def _pick_latin_font_path():
     """Latin 字体（必须含 ASCII 拉丁字符）。"""
     # 先看是否已有 DejaVu / Noto Sans Mono 等
@@ -728,6 +749,22 @@ def main():
         _cjk_path = _pick_cjk_font_path()
         print("[fb] 字体: latin=%s cjk=%s" % (_latin_path, _cjk_path),
               flush=True)
+        # v0.1.46: CJK 字体检测 —— 没装 CJK 时 URL 页面中文会显示为 □
+        _cjk_ok, _cjk_hint = _has_cjk_font()
+        if not _cjk_ok:
+            print("[fb] ⚠ CJK 字体未安装！URL 页面中文会显示为 □。修复：%s"
+                  % _cjk_hint, flush=True)
+            # 启动屏加一行告警（让用户上 fb0 第一眼就看到）
+            _warn = "⚠ CJK 字体未安装，中文 URL 页将显示 □"
+            _draw_text_mixed(_diag_draw, (W // 2, H // 3 + 3 * (H // 7)),
+                             _warn, _latin_sm, _cjk_sm,
+                             fill=(255, 180, 80), anchor="mm")
+            _hint_y = H // 3 + 4 * (H // 7)
+            if not _latin_sm and not _cjk_sm:
+                _hint_y = H // 3 + 4 * (H // 7)  # fallback
+            _draw_text_mixed(_diag_draw, (W // 2, _hint_y),
+                             _cjk_hint, _latin_sm, _cjk_sm,
+                             fill=(180, 200, 230), anchor="mm")
         _big = max(32, W // 22)
         _sm = max(18, W // 40)
         _latin_big = ImageFont.truetype(_latin_path, _big) if _latin_path else None
@@ -761,11 +798,20 @@ def main():
         time.sleep(0.1)
 
     cfg = fetcher.config or {}
-    # v0.1.45: 默认改为 "match_dashboard"（16:9 viewport，dashboard 自然长宽比）
-    # —— dashboard 填满 viewport，PIL scale 到 fb，整页无任何黑边。
-    # 1024×768 fb → 1280×720 viewport（×0.8 horiz, ×1.067 vert，水平 ~20% squish）
-    # 用户可显式设 browser_window 为 "match_fb" / "match_fb_wide" / [W, H] 数组覆盖。
-    bw_cfg = cfg.get("browser_window") or "match_dashboard"
+    # v0.1.46: URL 页面（任意含 type=url 的页面）强制用 match_dashboard。
+    # —— 这是关键修复：之前用户的旧 config 里写的是 match_fb_wide，被 _sanitize
+    #    误清洗成 [1920,1080] 列表默认值 → Chromium viewport = 1920×1080
+    #    → 16:9 dashboard 在 fb 里只占 1024×576 + 下方 192px 黑边。
+    # 现在只要有任意 URL 页就强制 match_dashboard（无视配置），保证填满 fb。
+    # 非 URL 页（html_file / media_file）才走用户的 browser_window 设置（默认 match_fb，
+    # 让 wrapper HTML 用 object-fit 在 4:3 viewport 里正常居中显示）。
+    pages_for_viewport = cfg.get("pages") or []
+    has_url_page = any(p.get("type") == "url" for p in pages_for_viewport if isinstance(p, dict))
+    if has_url_page:
+        bw_cfg = "match_dashboard"
+    else:
+        bw_cfg = cfg.get("browser_window") or "match_fb"
+    print("[fb] 视口决策: has_url=%s bw=%s" % (has_url_page, bw_cfg), flush=True)
     if isinstance(bw_cfg, str):
         bw_lower = bw_cfg.lower()
         if bw_lower in ("match_fb", "fb", "auto"):
@@ -991,7 +1037,13 @@ def main():
             # 这样设置页改了 url_kiosk_css 立即生效，无需切页。
             canvas._kiosk_css_pending = cfg.get("url_kiosk_css", "") or ""
             # 计算目标窗口尺寸（受 browser_window + display_zoom 共同影响）
-            win = cfg.get("browser_window") or "match_dashboard"
+            # v0.1.46: 与冷启动一致 —— 只要有 URL 页就强制 match_dashboard
+            _pages_now = cfg.get("pages") or []
+            _has_url_now = any(p.get("type") == "url" for p in _pages_now if isinstance(p, dict))
+            if _has_url_now:
+                win = "match_dashboard"
+            else:
+                win = cfg.get("browser_window") or "match_fb"
             if isinstance(win, str):
                 win_lower = win.lower()
                 if win_lower in ("match_fb", "fb", "auto"):

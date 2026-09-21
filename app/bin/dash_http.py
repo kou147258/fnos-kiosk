@@ -499,6 +499,29 @@ class Handler(BaseHTTPRequestHandler):
             pass
         return info
 
+    # v0.1.46: CJK 字体检测（设置页警告横幅用）
+    def _cjk_font_check(self):
+        """检查系统是否有 CJK 字体，返回 {installed, hint, font_paths[]}。"""
+        # 优先用 fb_render 的检测逻辑（避免逻辑重复）
+        try:
+            import fb_render
+            installed, hint = fb_render._has_cjk_font()
+            font_paths = []
+            # 也列出一些常见字体路径供排查
+            for cand in ("/usr/share/fonts/truetype/noto-cjk/NotoSansCJK-Regular.ttc",
+                         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
+                if os.path.isfile(cand):
+                    font_paths.append(cand)
+            return {
+                "installed": installed,
+                "hint": hint or "",
+                "font_paths": font_paths,
+            }
+        except Exception as e:
+            return {"installed": True, "hint": "",
+                    "font_paths": [], "error": str(e)[:120]}
+
     # ---- 系统信息（给「系统状态」模板页面用）----
     def _sysinfo(self):
         import shutil, subprocess
@@ -908,6 +931,10 @@ class Handler(BaseHTTPRequestHandler):
                                        "disk": {"parts": []}, "net": {},
                                        "uptime": "", "loadavg": "",
                                        "error": str(e)[:120]})
+            return
+        if path == "/api/sysinfo/cjk-fonts":
+            # v0.1.46: CJK 字体检查（设置页警告横幅）
+            self._send_json(200, {"ok": True, "cjk": self._cjk_font_check()})
             return
         if path == "/api/fb/zoom-debug":
             # 调试：显示实际生效的窗口尺寸 = browser_window / display_zoom
