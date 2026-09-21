@@ -347,17 +347,28 @@ class BrowserCanvas:
             self._fit_mode = page_fit
         # 否则保持 canvas._fit_mode 不变（主循环会用 cfg.display_fit 刷新）
 
-    def _render_background(self, pil_img):
+    def _render_background(self, pil_img, zoom_applied=1.0):
         """把浏览器截屏按 fb 尺寸填充画布底层。
 
         fit 模式（cfg.get('display_fit', 'stretch')）：
           - 'stretch' (默认): 强制拉伸到 fb 尺寸填满屏幕（推荐，16:9 内容在 4:3 fb 上轻微变形）
           - 'cover':         等比缩放 + 裁切，铺满 fb（适合背景图）
           - 'contain':       等比缩放 + 居中，整页可见，多余区域填黑边
+
+        v0.1.38: zoom_applied > 1 时 shot 已在 begin() 里被 crop 到 fb 尺寸；
+                 zoom_applied < 1 时 shot 已经比 fb 小，必须居中粘贴（不能 stretch，
+                 否则拉伸就抵消了 zoom）。
         """
         bw, bh = pil_img.size
         fit_mode = (self._fit_mode or "contain").lower() if hasattr(
             self, "_fit_mode") else "contain"
+        # 缩小版（zoom<1）：shot 已比 fb 小，强制居中黑边（不拉伸）
+        if zoom_applied < 1.0 - 0.01 and (bw < self.w or bh < self.h):
+            self.img.paste((0, 0, 0), [0, 0, self.w, self.h])
+            ox = (self.w - bw) // 2
+            oy = (self.h - bh) // 2
+            self.img.paste(pil_img, (ox, oy))
+            return
         if fit_mode == "stretch":
             # 强制拉伸
             if (bw, bh) != (self.w, self.h):
@@ -439,12 +450,27 @@ class BrowserCanvas:
             png = base64.b64decode(data_b64)
             with io.BytesIO(png) as buf:
                 shot = self._Image.open(buf).convert("RGB")
-            # 应用 zoom（>1 放大模拟高分屏字体）
+            # v0.1.38: per-page zoom 真正生效。之前的实现是先 PIL resize shot 到 N 倍，
+            # 然后 _render_background 又把它 resize 回 fb 尺寸（zoom 完全被覆盖）。
+            # 正确语义：zoom>1 → 内容"放大"（看到的内容更少但每样东西更大）；
+            #           zoom<1 → 内容"缩小"（看到的内容更多但每样东西更小）；
+            #           zoom==1 → 原尺寸。
             zoom = float(self._page.get("zoom") or 1.0)
-            if abs(zoom - 1.0) > 0.01:
-                nw, nh = max(1, int(shot.width * zoom)), max(1, int(shot.height * zoom))
-                shot = shot.resize((nw, nh), self._Image.LANCZOS)
-            self._render_background(shot)
+            if zoom > 1.0 + 0.01:
+                # scale up to logical zoom 倍，再取中心 fb 区域
+                big = shot.resize((max(1, int(shot.width * zoom)),
+                                   max(1, int(shot.height * zoom))),
+                                  self._Image.LANCZOS)
+                ox = max(0, (big.width - self.w) // 2)
+                oy = max(0, (big.height - self.h) // 2)
+                shot = big.crop((ox, oy, ox + self.w, oy + self.h))
+            elif zoom < 1.0 - 0.01:
+                # 缩小版 < fb 尺寸：居中 + 黑边
+                shot = shot.resize((max(1, int(shot.width * zoom)),
+                                    max(1, int(shot.height * zoom))),
+                                   self._Image.LANCZOS)
+            # zoom==1.0 时 shot 是 shot.w × shot.h，正常交给 _render_background
+            self._render_background(shot, zoom_applied=zoom)
             self._last_screenshot_ok = True
         except Exception as e:
             self._error_msg = "截图失败：%s" % str(e)[:80]
