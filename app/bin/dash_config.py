@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.27"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.28"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -193,16 +193,19 @@ class Config:
         if var_override != self.path and os.path.isfile(var_override):
             candidates.append(var_override)
         data = self._merge_files(candidates)
-        # v0.1.25 一次性迁移：旧默认是 contain，会导致 16:9 内容在 4:3 fb 上 letterbox，
-        # 且 zoom 改了用户看不出效果（截图还在 contain 居中黑边区里）。自动升到 stretch。
-        # 通过 var/.migrated_to_stretch 标记保证只跑一次；用户后续手动改回 contain 会保留。
+        # 一次性迁移：contain / cover → stretch。
+        # contain 让 fb0 内永远 letterbox；cover 会裁切——两者都让「zoom 改了看不出效果」
+        # 「画面没充满」反馈不断。每个 dashboard 启动都检查 + 落日志，确保用户在 fb.log
+        # 里能看到「v0.1.25 migration ran: contain -> stretch」一行，方便排障。
         marker = os.path.join(self.var_dir, ".migrated_to_stretch")
-        if (data.get("display_fit") in (None, "", "contain")
-                and not os.path.isfile(marker)):
+        cur = data.get("display_fit")
+        if cur in (None, "", "contain", "cover") \
+                and not os.path.isfile(marker):
             data["display_fit"] = "stretch"
             try:
                 with open(marker, "w", encoding="utf-8") as f:
-                    f.write("v0.1.25: display_fit contain -> stretch\n")
+                    f.write("v0.1.25 migration: display_fit %s -> stretch\n"
+                            % (cur or "default"))
             except OSError:
                 pass
             # 顺手落盘（用 self.path 以保证写到 etc_dir 或 var_dir）
@@ -214,6 +217,17 @@ class Config:
                 os.replace(tmp, self.path)
             except OSError:
                 pass
+            # 把迁移活动落到 fb.log（dashboard 启动还没建 log 时降级到 initdb.log）
+            for _lp in ("fb.log",):
+                try:
+                    import time as _t
+                    with open(os.path.join(self.var_dir, _lp), "a",
+                              encoding="utf-8") as _f:
+                        _f.write("[config %s] migration: display_fit %s -> stretch\n"
+                                 % (_t.strftime("%m-%d %H:%M:%S"),
+                                    cur or "default"))
+                except OSError:
+                    pass
         return data
 
     def _merge_files(self, paths):
