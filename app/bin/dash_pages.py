@@ -145,7 +145,13 @@ class PageStore:
         os.replace(tmp, full)
 
     def write_bytes(self, name, data):
-        """写二进制（图片 / 视频）。data 必须为 bytes 或 base64 str。"""
+        """写二进制（图片 / 视频）。data 必须为 bytes 或 base64 str。
+
+        v0.1.33：媒体文件（image/video）会同时生成 `_wrap_<basename>.html`
+        包裹层，用 CSS object-fit:contain 让 Chromium 把图片/视频填满 viewport
+        —— 直接打开 PNG/JPG 时 Chromium 默认按原始像素居中、周围留黑边，
+        那不是 letterbox，是浏览器的图像 viewer 行为。
+        """
         full = self._full(name)
         if isinstance(data, str):
             # base64 解码
@@ -162,21 +168,86 @@ class PageStore:
         with open(tmp, "wb") as f:
             f.write(bytes(data))
         os.replace(tmp, full)
+        # 媒体文件 → 同时生成 wrapper HTML（让图片/视频填满 viewport）
+        if kind_of(name) in ("image", "video"):
+            self._write_wrapper(name, kind_of(name))
+
+    def _write_wrapper(self, name, kind):
+        """给媒体文件生成 _wrap_<basename>.html，CSS 让 img/video 填满 viewport。
+
+        HTML 结构最小：100vw × 100vh 容器，img/video 用 object-fit:contain
+        保比例（不裁切），background:#000 让非图像区显黑。
+        """
+        if not safe_filename(name):
+            return
+        base, _ = os.path.splitext(name)
+        wrap_name = "_wrap_" + base + ".html"
+        wrap_full = self._full(wrap_name)
+        # 用 absolute file:// 引用源文件
+        src_full = os.path.realpath(self._full(name))
+        src_url = "file://" + src_full.replace(os.sep, "/")
+        if kind == "image":
+            tag = '<img src="%s" alt="">' % src_url
+        else:
+            # video 需 muted 才能 autoplay（headless Chromium 限制）
+            tag = ('<video src="%s" autoplay loop muted playsinline></video>'
+                   % src_url)
+        # 文件名做 title（HTML escape）
+        import html as _html
+        title = _html.escape(name)
+        body = (
+            '<!DOCTYPE html>\n'
+            '<html><head><meta charset="UTF-8">\n'
+            '<title>%s</title>\n'
+            '<style>\n'
+            'html,body{margin:0;padding:0;width:100vw;height:100vh;'
+            'overflow:hidden;background:#000}\n'
+            'img,video{width:100vw;height:100vh;'
+            'object-fit:contain;display:block}\n'
+            '</style></head>\n'
+            '<body>%s</body></html>\n'
+        ) % (title, tag)
+        tmp = wrap_full + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(body)
+        os.replace(tmp, wrap_full)
 
     def delete(self, name):
+        """删除文件 + 同名 wrapper（如果有）。"""
         full = self._full(name)
         if not os.path.exists(full):
             raise ValueError("文件不存在")
         os.unlink(full)
+        # 同步删掉 _wrap_*.html
+        base, _ = os.path.splitext(name)
+        wrap_name = "_wrap_" + base + ".html"
+        wrap_full = self._full(wrap_name)
+        try:
+            if os.path.isfile(wrap_full):
+                os.unlink(wrap_full)
+        except OSError:
+            pass
 
     def to_file_url(self, name):
-        """把 var/pages/<filename> 转成 file:// URL 供 Chromium 加载。"""
+        """把 var/pages/<filename> 转成 file:// URL 供 Chromium 加载。
+
+        对媒体文件（image/video）返回 wrapper HTML 的 URL——wrapper 里有
+        CSS 让 img/video object-fit:contain 填满 viewport，避免 Chromium
+        默认 viewer 的「按原始像素居中 + 周围黑边」。
+        """
         full = os.path.realpath(self._full(name))
         # 防路径穿越校验：必须仍在 self.root 下
         root_real = os.path.realpath(self.root)
         if not (full == root_real or full.startswith(root_real + os.sep)):
             raise ValueError("文件路径非法")
-        # file URL 用 / 分隔
+        # 媒体文件 → wrapper URL（如果存在）
+        if kind_of(name) in ("image", "video"):
+            base, _ = os.path.splitext(name)
+            wrap_name = "_wrap_" + base + ".html"
+            wrap_full = os.path.realpath(self._full(wrap_name))
+            if os.path.isfile(wrap_full):
+                return "file://" + wrap_full.replace(os.sep, "/")
+        # 普通 HTML / SVG / 其他 → 直接 file://
         url = "file://" + full.replace(os.sep, "/")
         return url
 
