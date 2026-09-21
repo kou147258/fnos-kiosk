@@ -1,5 +1,5 @@
 appname=com.fnos.kiosk
-version=0.1.44
+version=0.1.45
 display_name=浏览器屏
 desc=<b>把任意 Web 页面直接显示到 NAS 副屏</b>——基于 headless Chromium + CDP，将 URL 列表轮换或单 URL 占用全屏渲染到 /dev/fb0。<br><br>• 多种内容源：远程 URL / 本地 HTML / 本地图片（PNG/JPG/GIF/WebP/SVG/BMP/ICO） / 本地视频（MP4/WebM/Ogg/Mov）<br>• 多页轮换：URL 列表按时间自动翻页<br>• 显示方向：0° / 90° / 180° / 270° 旋转，PPI 自适应缩放<br>• 拖拽上传：直接把图片/视频拖到设置页 → 立即显示到副屏<br>• 自愈 watchdog：渲染进程崩溃 / Chromium 启动失败自动重试，fb0 不可读也持续重试<br>• 登录态持久化：Chromium profile 保留 cookies / localStorage，重启免登录<br>• 安全：管理接口仅限 127.0.0.1，URL 白名单防 SSRF（可配置放行）<br><br>需要本机已安装 <code>chromium</code> 或 <code>chromium-browser</code>（apt 安装即可）。<br>📦 项目地址：<a href='https://github.com/kou147258/fnos-kiosk'>github.com/kou147258/fnos-kiosk</a>
 platform=all

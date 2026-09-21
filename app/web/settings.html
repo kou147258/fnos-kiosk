@@ -142,14 +142,14 @@
         <p class="hint">自动检测失败时请手动填写。</p>
         <h3>窗口尺寸</h3>
         <div class="seg" id="seg-win-preset">
-          <button data-v="match_fb_wide" class="active">🎯 自适应显示器 ×1.25（推荐）</button>
-          <button data-v="match_fb">📐 严格匹配显示器</button>
-          <button data-v="1024,768">1024×768（4:3）</button>
+          <button data-v="match_dashboard" class="active">🎯 16:9 viewport（推荐）</button>
+          <button data-v="match_fb_wide">📐 自适应显示器 ×1.25</button>
+          <button data-v="match_fb">📏 严格匹配显示器</button>
           <button data-v="1280,800">1280×800（16:10）</button>
           <button data-v="1920,1080">1920×1080（16:9）</button>
           <button data-v="custom">自定义</button>
         </div>
-        <p class="hint"><b>自适应显示器 ×1.25</b>（默认，v0.1.42+）——窗口 = 显示器 ×1.25（保持长宽比），让大多数 dashboard 自适应填满 viewport，再 PIL 缩到 fb → 整页无黑边。<br><b>严格匹配显示器</b>——窗口 = 显示器物理分辨率（<code id="fb-dim-show">—</code>），截图即填满。<br>选「自定义」可手动改下方宽高。</p>
+        <p class="hint"><b>16:9 viewport</b>（v0.1.45 默认）——窗口 = 16:9 比例（dashboard 自然长宽比），强制 dashboard 填满 viewport；PIL scale 到 4:3 fb 会有约 20% 水平 squish，<b>但整页无黑边</b>。<br><b>自适应显示器 ×1.25</b>（v0.1.42 默认）——窗口 = fb ×1.25（保持 fb 长宽比），dashboard 自适应填满 viewport，<b>dashboard 设计成 100vh 时无黑边</b>，否则上下可能有黑边。<br><b>严格匹配显示器</b>——窗口 = 显示器物理分辨率，截图即填满 fb。<br>选「自定义」可手动改下方宽高。</p>
         <div class="row-2">
           <label class="field">宽度
             <input type="number" id="set-win-w" class="text-input" min="320" max="7680">

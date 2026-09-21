@@ -761,10 +761,11 @@ def main():
         time.sleep(0.1)
 
     cfg = fetcher.config or {}
-    # v0.1.42: 默认改为 "match_fb_wide"（保持 fb 长宽比，1.25 倍 fb 尺寸）
-    # —— 让 dashboard 自适应时填满 viewport，PIL 再缩到 fb，整页无黑边。
-    # 用户可显式设 browser_window 为 "match_fb" / [W, H] 数组覆盖。
-    bw_cfg = cfg.get("browser_window") or "match_fb_wide"
+    # v0.1.45: 默认改为 "match_dashboard"（16:9 viewport，dashboard 自然长宽比）
+    # —— dashboard 填满 viewport，PIL scale 到 fb，整页无任何黑边。
+    # 1024×768 fb → 1280×720 viewport（×0.8 horiz, ×1.067 vert，水平 ~20% squish）
+    # 用户可显式设 browser_window 为 "match_fb" / "match_fb_wide" / [W, H] 数组覆盖。
+    bw_cfg = cfg.get("browser_window") or "match_dashboard"
     if isinstance(bw_cfg, str):
         bw_lower = bw_cfg.lower()
         if bw_lower in ("match_fb", "fb", "auto"):
@@ -773,6 +774,19 @@ def main():
             # 保持 fb 长宽比 ×1.25（线性放大，每边都 1.25 倍）
             # 1024×768 fb → 1280×960 viewport → dashboard 填满 → PIL scale → fb
             win_w, win_h = int(W * 1.25), int(H * 1.25)
+        elif bw_lower in ("match_dashboard", "16:9", "wide16"):
+            # v0.1.45: 强制 16:9 viewport（dashboard 自然长宽比）→ PIL scale 到 fb → 整页无黑边
+            # 算法：viewport 短边 = fb 短边 × 1.0（即 viewport 的 height = fb height for 横向 fb），
+            #        长边按 16:9 算出 → PIL 横向 squish 把 viewport 长边缩到 fb 长边
+            # 1024×768 fb → viewport 1366×768（×0.75 horiz, ×1.0 vert，dashboard 完整填 fb，水平 squish ~25%）
+            # 1920×1080 fb → viewport 1920×1080（16:9 正好匹配，无 squish）
+            # 1280×720 fb → viewport 1280×720（16:9 匹配）
+            if W >= H:
+                win_h = H
+                win_w = int(win_h * 16 / 9)
+            else:
+                win_w = W
+                win_h = int(win_w * 16 / 9)
         else:
             win_w, win_h = W, H  # 未知字符串 → fallback match_fb
     else:
@@ -977,13 +991,20 @@ def main():
             # 这样设置页改了 url_kiosk_css 立即生效，无需切页。
             canvas._kiosk_css_pending = cfg.get("url_kiosk_css", "") or ""
             # 计算目标窗口尺寸（受 browser_window + display_zoom 共同影响）
-            win = cfg.get("browser_window") or "match_fb_wide"
+            win = cfg.get("browser_window") or "match_dashboard"
             if isinstance(win, str):
                 win_lower = win.lower()
                 if win_lower in ("match_fb", "fb", "auto"):
                     new_w, new_h = W, H
                 elif win_lower in ("match_fb_wide", "wide", "1.25x"):
                     new_w, new_h = int(W * 1.25), int(H * 1.25)
+                elif win_lower in ("match_dashboard", "16:9", "wide16"):
+                    if W >= H:
+                        new_h = H
+                        new_w = int(new_h * 16 / 9)
+                    else:
+                        new_w = W
+                        new_h = int(new_w * 16 / 9)
                 else:
                     new_w, new_h = W, H
             else:

@@ -341,6 +341,8 @@ document.getElementById("seg-win-preset").addEventListener("click", function (e)
     cfg.browser_window = "match_fb";
   } else if (v === "match_fb_wide" || v === "wide" || v === "1.25x") {
     cfg.browser_window = "match_fb_wide";
+  } else if (v === "match_dashboard" || v === "16:9" || v === "wide16") {
+    cfg.browser_window = "match_dashboard";
   } else {
     var parts = v.split(",");
     cfg.browser_window = [parseInt(parts[0], 10), parseInt(parts[1], 10)];
