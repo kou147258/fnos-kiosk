@@ -270,6 +270,9 @@ class Handler(BaseHTTPRequestHandler):
             cdp_port = port + 1023
         # 日志文件：先尝试 var/fb.log；权限不够就用临时文件（fnpack 可能没给 var/ 写权限）
         log_path = os.path.join(self.var_dir, "fb.log")
+        # Chromium stderr 也写到 fb_chromium.log（独立文件，方便排障）
+        os.environ["KIOSK_CHROMIUM_LOG"] = os.path.join(
+            self.var_dir, "fb_chromium.log")
         try:
             log = open(log_path, "ab")
         except OSError:

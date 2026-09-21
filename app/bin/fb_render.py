@@ -373,6 +373,15 @@ class BrowserCanvas:
     def begin(self, bg=None):
         """把当前页面渲染成底层画面。失败保留上一帧。"""
         self.img.paste(bg if bg else (0, 0, 0), [0, 0, self.w, self.h])
+        # HUD 后续会用到 text/textlength/rectangle/ellipse——全部委托给
+        # ImageDraw on self.img（HUD 早期代码 d.textlength(...) / self.c.text(...)
+        # 等会直接走这些转发方法）
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(self.img)
+        self.textlength = d.textlength
+        self.text = d.text
+        self.rectangle = d.rectangle
+        self.ellipse = d.ellipse
         if self._page is None:
             return
         url = self._page_url

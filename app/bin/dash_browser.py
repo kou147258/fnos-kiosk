@@ -337,18 +337,31 @@ class Browser:
                 except OSError:
                     log = subprocess.DEVNULL
         else:
-            log = subprocess.DEVNULL
+            log_path = os.environ.get("KIOSK_CHROMIUM_LOG")  # 可选日志文件
+        log = subprocess.DEVNULL
+        log_file = None
+        if log_path:
+            try:
+                # append 模式：fb_render 重启 Chromium 时 stderr 会续上
+                log_file = open(log_path, "ab")
+                log = log_file
+            except OSError:
+                log = subprocess.DEVNULL
+        # 清理 stale SingletonLock：上一次 Chromium 崩溃时可能没释放锁，
+        # 导致下次启动失败（exit=21 或 singleton lock 错）
+        for lock_name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+            try:
+                os.remove(os.path.join(self.user_data_dir, lock_name))
+            except OSError:
+                pass
         try:
             self.proc = subprocess.Popen(
                 args, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=log,
                 start_new_session=True)
         finally:
-            if log is not subprocess.DEVNULL:
-                try:
-                    log.close()
-                except OSError:
-                    pass
+            # 不关 log_file——故意让 Chromium 持续往里写
+            pass
         # 等待 /json/version 可访问
         deadline = time.time() + 20
         while time.time() < deadline:
