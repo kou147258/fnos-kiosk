@@ -349,7 +349,7 @@ class BrowserCanvas:
         self._loaded_at = 0.0
         self._last_screenshot_ok = False
         self._kiosk_css_pending = ""            # 来自 cfg["url_kiosk_css"]，set_page 写入
-        self._kiosk_css_applied = (None, None)  # (url_key, css) —— 跟踪已注入的 CSS，避免每帧重发
+        self._kiosk_css_applied = (None, None, None)  # (page_type, css, zoom) —— 跟踪已注入的 CSS，避免每帧重发
         self._error_msg = ""
         self._fit_mode = "stretch"  # cover/contain/stretch，主循环刷新；config 默认 stretch
 
@@ -458,12 +458,16 @@ class BrowserCanvas:
                 # 否则会破坏 kiosk 自有布局。
                 page_type = self._page.get("type") or "url"
                 want_css = self._kiosk_css_pending if page_type == "url" else ""
-                if (page_type, want_css) != self._kiosk_css_applied:
+                # v0.1.53: URL 页面把当前页面缩放值传给内容（不是缩 viewport）。
+                # 用户设置页的「页面缩放」滑块 50%-300% 只缩放 dashboard 内部内容，
+                # viewport 大小不变，符合用户「缩放缩的是网页内部内容，不是整体 URL」的诉求。
+                page_zoom = float((self._page or {}).get("zoom") or 1.0)
+                if (page_type, want_css, page_zoom) != self._kiosk_css_applied:
                     try:
-                        self.browser.set_kiosk_css(want_css)
+                        self.browser.set_kiosk_css(want_css, user_zoom=page_zoom)
                     except Exception:
                         pass
-                    self._kiosk_css_applied = (page_type, want_css)
+                    self._kiosk_css_applied = (page_type, want_css, page_zoom)
                 self.browser.navigate(url, wait="load",
                                       timeout=int(self._page.get("timeout") or 30))
                 self._loaded_at = now

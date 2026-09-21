@@ -550,11 +550,15 @@ class Browser:
         self.call("Page.reload", {"ignoreCache": True}, timeout=10)
         self.wait_event("Page.loadEventFired", timeout=timeout)
 
-    def set_kiosk_css(self, css):
+    def set_kiosk_css(self, css, user_zoom=1.0):
         """注册/替换一个会在每个新文档加载时自动注入的 CSS 段。
 
         用于强制让 URL 页面去除默认 body margin、固定宽度子元素等，让它们
         在 1024×768 viewport 里尽量铺满。
+
+        v0.1.53: 增加 user_zoom 参数 —— 通过 window.__kioskUserZoom 注入到页面，
+        让 auto-fit JS 知道用户设置页的「页面缩放」值，只缩放 dashboard 内容
+        （不缩 viewport）。这样 100% 就是 dashboard 内容原始大小，200% 就是 2 倍。
 
         实现：调用 Page.addScriptToEvaluateOnNewDocument，注入的脚本会在
         每次新建文档（包括同 tab 内的 Page.navigate、Page.reload、history
@@ -575,6 +579,13 @@ class Browser:
             self._kiosk_css_id = None
         if not css:
             return
+        # v0.1.53: user_zoom 注入到 window.__kioskUserZoom，让 auto-fit JS 读取
+        try:
+            uz = float(user_zoom)
+            if uz <= 0:
+                uz = 1.0
+        except (TypeError, ValueError):
+            uz = 1.0
         # 注入脚本：把 <style id="__kiosk_injected_css"> 塞到 head。
         # 用 DOMContentLoaded 包裹是因为脚本会在 DOM 构造前运行；
         # 如果 document 已加载完成（about:blank → 直接 navigate 路径）
@@ -584,7 +595,11 @@ class Browser:
         # 这解决了"dashboard 给 1280+ 宽设计、Chromium viewport 只有 1024×768 时
         # 右边和下边的卡片看不到"的问题（overflow:hidden 也让用户滚动不了）。
         css_json = json.dumps(css)
+        # v0.1.53: 用户可调 zoom 通过 window.__kioskUserZoom 传给 auto-fit JS
+        user_zoom_json = json.dumps(uz)
         js_src = (
+            # v0.1.53: 先注入用户 zoom 值到 window（auto-fit JS 在下面读取）
+            "window.__kioskUserZoom=" + user_zoom_json + ";"
             "(function(){"
             "function __kioskInject(){"
             "  try{"
@@ -649,12 +664,23 @@ class Browser:
             # v0.1.52: 用「填满 + 缩放」逻辑
             # - 内容比视口大（任意方向）：zoom out 到能装下（取 min）
             # - 内容比视口小（两方向都装得下）：zoom in 填满较大方向（取 max）
-            # 这就是用户要的「URL 像图片一样铺满 fb，缩放缩的是网页内部内容」：
-            # viewport 不变，dashboard 内容自动放大到铺满 viewport（可裁切一边）。
+            # v0.1.53: 改用 transform: scale + transform-origin: center，
+            # 替代 style.zoom（zoom 默认 origin 是左上角 0,0，导致 dashboard
+            # 从左上角向外扩，左侧/上侧被裁切，只看到右上角放大的部分）。
+            # 用 transform: scale + center origin 后 dashboard 居中放大，
+            # 左右两侧均匀裁切，dashboard 居中布局时核心内容（卡片）始终居中可见。
+            # v0.1.53: 支持用户可调 zoom（设置页「页面缩放」50%-300%）——
+            # 用户缩放只影响 dashboard 内容，不影响 viewport 大小。
+            # 缩放值通过 window.__kioskUserZoom 传入（fb_render 通过 Page.addScriptToEvaluateOnNewDocument 注入）。
+            "      var userZoom=parseFloat(window.__kioskUserZoom||'1.0')||1.0;"
             "      var sFit=Math.min(ww/w,wh/h);"
             "      var sFill=Math.max(ww/w,wh/h);"
-            "      var s=(sFit<1)?sFit:sFill;"
-            "      if(s<0.05)s=1;"
+            "      var sAuto=(sFit<1)?sFit:sFill;"
+            "      var s=sAuto*userZoom;"
+            "      if(s<0.05)s=0.5;"
+            "      if(s>10)s=10;"
+            "      root.style.transform='scale('+s+')';"
+            "      root.style.transformOrigin='center center';"
             "      root.style.zoom=s;"
             "      var dbg=document.getElementById('__kiosk_fit_dbg');"
             "      if(!dbg){"
