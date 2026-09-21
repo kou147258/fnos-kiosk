@@ -276,6 +276,28 @@ class Browser:
         self._ws_url = ""
         self._kiosk_css_id = None     # Page.addScriptToEvaluateOnNewDocument 返回的 identifier（用于 set_kiosk_css 替换）
 
+    # ---- 视口钳制（v0.1.60）----
+    def set_viewport(self, width, height, dpr=1.0):
+        """通过 CDP Emulation.setDeviceMetricsOverride 显式告诉 chromium
+        「inner viewport 就是 N×M，DPR=X」——绕开 headless=new 的
+        auto-detect DPR 偷走 viewport 宽度的坑。
+
+        注意：Emulation 域需要在 Page.enable 之后才能用，所以调用时机是
+        Browser.connect() 之后、首次 navigate() 之前。
+        """
+        try:
+            self.call("Emulation.setDeviceMetricsOverride", {
+                "width": int(width),
+                "height": int(height),
+                "deviceScaleFactor": float(dpr),
+                "mobile": False,
+                "screenWidth": int(width),
+                "screenHeight": int(height),
+            }, timeout=5)
+            return True
+        except Exception:
+            return False
+
     # ---- 启动 ----
     def start(self, log_path=None):
         exe, finfo = find_chromium(self.chromium_path)
@@ -312,8 +334,16 @@ class Browser:
         ]
         if self.hide_cursor:
             args.append("--hide-cursor")
-        if self.scale != 1.0:
-            args.append("--force-device-scale-factor=%.3f" % self.scale)
+        # v0.1.60: 强制 device-pixel-ratio，**不依赖 self.scale 是否非 1.0**。
+        # 之前只在 self.scale != 1.0 时才传，但 chromium `--headless=new` 默认会
+        # auto-detect 系统 DPR（这台 NAS 探测到 1.25），导致 inner viewport 缩成
+        # window-size / DPR。比方说 window-size=1280×720 实际上 inner CSS 视口
+        # 只有 1024×576，dashboard `auto-fit, minmax(340px, 1fr)` 就在 1024 上
+        # 退化成 2 列（fb0 上看到 4 张卡的根因）。
+        # 强制 1.0（如果用户显式设了 browser_scale != 1.0，按用户值走）保证 inner
+        # viewport 就是 window-size，不被 auto-detect 偷掉。
+        _force_dpr = float(self.scale) if float(self.scale) > 0 else 1.0
+        args.append("--force-device-scale-factor=%.3f" % _force_dpr)
         if self.user_data_dir:
             args.append("--user-data-dir=%s" % self.user_data_dir)
             # 让密码管理器、autofill 等都持久化（即便没显式调用）

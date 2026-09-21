@@ -1,0 +1,38 @@
+v0.1.60 (2026-09-21)
+
+修复：v0.1.59 的 chromium --window-size 被 headless=new 自动探测的 DPR 偷走
+
+根因：
+v0.1.59 已经把 chromium 启动参数改成 `--window-size=1280,720`，fb.log 也确实显示
+`Chromium ready (window=1280x720)`，但 fb0 上 dashboard 仍然只渲染 2 列（4 张卡）。
+
+fb_render.py 跟 dash_browser.py 的 chromium 启动参数里只在 `self.scale != 1.0` 时
+才传 `--force-device-scale-factor`。**默认 1.0 时不传任何 DPR 强制**，于是
+chromium `--headless=new` 走 auto-detect：在你的 NAS 上 auto-detect 出 deviceScaleFactor
+= 1.25（这台 Linux 的 fb 驱动/DPI 设置导致的），导致 inner CSS viewport =
+1280 / 1.25 = 1024。
+
+dashboard.css 用的是 `grid-template-columns: repeat(auto-fit, minmax(340px, 1fr))`，
+在 1240 宽度（1280 viewport - 40 padding）→ 3 列；在 984 宽度（1024 viewport - 40 padding）
+→ 3*340+2*14 = 1048 > 984 → 退化成 2 列。所以 fb0 上看到的就是 4 张卡。
+
+修复：
+1. **dash_browser.py:316 改硬条件**——任何时候都加 `--force-device-scale-factor=1.0`
+   （如果 self.scale > 0 也走用户值），不再被 self.scale == 1.0 的 default 跳过。
+2. **新增 dash_browser.set_viewport(w, h, dpr=1.0)** 方法，通过 CDP
+   `Emulation.setDeviceMetricsOverride` 在 connect() 之后 *显式*告诉 chromium
+   inner viewport 就是 N×M，DPR=X，作为 belt-and-suspenders 第二道保险
+   （即便 chromium CLI flag 因为某种原因被忽略，CDP override 还会生效）。
+3. fb_render.py 在每个 `browser.connect()` 后调用 `set_viewport(win_w, win_h, dpr=1.0)`，
+   并在 fb.log 里加一行 `[fb] Emulation.setDeviceMetricsOverride WxH dpr=1.0` 便于验真。
+
+变更文件：
+- app/bin/dash_browser.py (强制 --force-device-scale-factor；新增 set_viewport 方法)
+- app/bin/fb_render.py   (browser.connect() 后调 set_viewport；fb.log 加 banner)
+- app/bin/dash_config.py (版本号 0.1.59 → 0.1.60)
+- manifest               (version=0.1.60)
+- com.fnos.kiosk.fpk     (重打包)
+
+FPK SHA256：见 com.fnos.kiosk-0.1.60.fpk 的 Get-FileHash。
+
+完整变更日志：https://github.com/kou147258/fnos-kiosk/commits/master

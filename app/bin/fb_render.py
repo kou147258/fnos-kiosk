@@ -983,6 +983,16 @@ def main():
         try:
             browser.start(log_path=log_path)
             browser.connect()
+            # v0.1.60: 显式钳制 inner viewport + DPR=1.0。绕过 chromium headless=new
+            # auto-detect DPR 偷 viewport 的关键——不加这一步，--window-size=1280
+            # 在某些 headless 模式下会被 auto-detected DPR 1.25 缩成 inner 1024。
+            try:
+                browser.set_viewport(win_w, win_h, dpr=1.0)
+                print("[fb] Emulation.setDeviceMetricsOverride %dx%d dpr=1.0" % (win_w, win_h),
+                      flush=True)
+            except Exception as e:
+                print("[fb] set_viewport 失败：%r（fallback 到 default viewport）" % e,
+                      flush=True)
             print("[fb] Chromium ready (window=%dx%d)" % (win_w, win_h),
                   flush=True)
             break
