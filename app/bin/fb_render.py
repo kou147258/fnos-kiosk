@@ -333,19 +333,28 @@ class BrowserCanvas:
         self._fit_mode = "stretch"  # cover/contain/stretch，主循环刷新；config 默认 stretch
 
     def set_page(self, page, kiosk_css=""):
-        self._page = page
-        self._page_url = dash_pages.resolve_url(page, self.page_store,
-                                                http_port=self.http_port)
-        self._loaded_at = 0.0  # 触发下次 begin() 重新导航
-        # 跟踪最新要求的 kiosk CSS；begin() 在导航前根据页面 type 判断是否实际注入
+        # v0.1.39: set_page 改为幂等——主循环每帧调用，URL/path 没变就不重导航。
+        # 之前只在 page.id 变化时调用，导致用户改 zoom/fit 不会立刻生效。
         self._kiosk_css_pending = kiosk_css or ""
+        if not page:
+            self._page = None
+            self._page_url = ""
+            self._loaded_at = 0.0
+            return
+        new_url = dash_pages.resolve_url(page, self.page_store,
+                                        http_port=self.http_port)
+        old_url = self._page_url
+        self._page = page
+        self._page_url = new_url
         # v0.1.35: per-page fit 覆盖全局 display_fit。page.fit 是
         # "none"/"stretch"/"contain"/"cover" 之一，"none" 时回退到 _fit_mode。
         page_fit = (page.get("fit") or "none").lower() if isinstance(
             page.get("fit"), str) else "none"
         if page_fit in ("stretch", "contain", "cover"):
             self._fit_mode = page_fit
-        # 否则保持 canvas._fit_mode 不变（主循环会用 cfg.display_fit 刷新）
+        # 只在 URL/path 实际变化时触发重新导航；其他字段（zoom/fit 等）改了不影响。
+        if new_url != old_url:
+            self._loaded_at = 0.0
 
     def _render_background(self, pil_img, zoom_applied=1.0):
         """把浏览器截屏按 fb 尺寸填充画布底层。
@@ -1078,10 +1087,9 @@ def main():
                     time.sleep(delay)
                     continue
 
-            # 切换页面时刷新 canvas 目标
-            if getattr(canvas, "_page", None) is None or \
-                    canvas._page.get("id") != page.get("id"):
-                canvas.set_page(page, kiosk_css=cfg.get("url_kiosk_css", ""))
+            # v0.1.39: 每帧都 set_page（幂等，URL 没变就不重导航）。之前只在 page.id 变化
+# 时调用，导致 zoom/fit/url_kiosk_css 改了不生效——必须重启应用才看到效果。
+            canvas.set_page(page, kiosk_css=cfg.get("url_kiosk_css", ""))
 
             # 绘制
             draw_failed = False
