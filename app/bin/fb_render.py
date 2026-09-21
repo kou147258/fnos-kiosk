@@ -328,7 +328,7 @@ class BrowserCanvas:
         self._loaded_at = 0.0
         self._last_screenshot_ok = False
         self._error_msg = ""
-        self._fit_mode = "contain"  # cover/contain/stretch，主循环刷新
+        self._fit_mode = "stretch"  # cover/contain/stretch，主循环刷新；config 默认 stretch
 
     def set_page(self, page):
         self._page = page
@@ -339,10 +339,10 @@ class BrowserCanvas:
     def _render_background(self, pil_img):
         """把浏览器截屏按 fb 尺寸填充画布底层。
 
-        fit 模式（cfg.get('display_fit', 'contain')）：
-          - 'contain' (默认): 等比缩放 + 居中，整页可见，多余区域填黑边
-          - 'cover':        等比缩放 + 裁切，铺满 fb（适合背景图）
-          - 'stretch':      强制拉伸到 fb 尺寸（不顾比例，可能变形）
+        fit 模式（cfg.get('display_fit', 'stretch')）：
+          - 'stretch' (默认): 强制拉伸到 fb 尺寸填满屏幕（推荐，16:9 内容在 4:3 fb 上轻微变形）
+          - 'cover':         等比缩放 + 裁切，铺满 fb（适合背景图）
+          - 'contain':       等比缩放 + 居中，整页可见，多余区域填黑边
         """
         bw, bh = pil_img.size
         fit_mode = (self._fit_mode or "contain").lower() if hasattr(
@@ -621,10 +621,12 @@ def main():
                     os.environ.get("TRIM_SERVICE_PORT", "8280"))
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--pages-dir", default="")
-    # Chromium CDP 远程调试端口：与 dashboard 的 cdp_proxy 必须保持一致。
+    # Chromium CDP 端口（fb_render 自己内部用，绑定 127.0.0.1 仅本机）。
     # 优先级：--cdp-port > KIOSK_CDP_PORT > http_port+1023（从 --api 解析）
-    # 重要：v0.1.20 之前这里默认 9223，与 dashboard 的 9303 不一致 → 远程控制报
+    # 重要：v0.1.20 之前这里默认 9223，与 dashboard 的 9303 不一致 → 截图失败
     # "连不上 Chromium（:json 失败）：Connection refused" 的根因。
+    # 注：v0.1.25 删了设置页「远程控制」tab + cdp_proxy 模块；外部 chrome://inspect
+    # 仍可用，端口提示在设置页底部。
     ap.add_argument("--cdp-port", type=int, default=0)
     args = ap.parse_args()
     if args.cdp_port <= 0:

@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.24"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.25"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -96,7 +96,7 @@ DEFAULT_CONFIG = {
     "rotate_seconds": 30,
     "fb_enabled": False,
     "fb_rotate": 0,
-    "display_fit": "contain",
+    "display_fit": "stretch",  # 默认填满 fb（解决 16:9 内容在 4:3 fb 上的 letterbox + 让 zoom 立刻可见）
     "display_zoom": 1.0,       # URL 页面缩放（1.0=原始，>1 放大（页面 CSS 像素更少 → 内容看起来更大），<1 缩小）
     "screen_inches": 0,
     "browser_path": "",        # 自定义 chromium 路径（空则自动找）
@@ -192,7 +192,29 @@ class Config:
         var_override = os.path.normpath(os.path.join(self.var_dir, "config.json"))
         if var_override != self.path and os.path.isfile(var_override):
             candidates.append(var_override)
-        return self._merge_files(candidates)
+        data = self._merge_files(candidates)
+        # v0.1.25 一次性迁移：旧默认是 contain，会导致 16:9 内容在 4:3 fb 上 letterbox，
+        # 且 zoom 改了用户看不出效果（截图还在 contain 居中黑边区里）。自动升到 stretch。
+        # 通过 var/.migrated_to_stretch 标记保证只跑一次；用户后续手动改回 contain 会保留。
+        marker = os.path.join(self.var_dir, ".migrated_to_stretch")
+        if (data.get("display_fit") in (None, "", "contain")
+                and not os.path.isfile(marker)):
+            data["display_fit"] = "stretch"
+            try:
+                with open(marker, "w", encoding="utf-8") as f:
+                    f.write("v0.1.25: display_fit contain -> stretch\n")
+            except OSError:
+                pass
+            # 顺手落盘（用 self.path 以保证写到 etc_dir 或 var_dir）
+            try:
+                tmp = self.path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(self._sanitize(data), f,
+                              ensure_ascii=False, indent=2)
+                os.replace(tmp, self.path)
+            except OSError:
+                pass
+        return data
 
     def _merge_files(self, paths):
         data = json.loads(json.dumps(DEFAULT_CONFIG))
