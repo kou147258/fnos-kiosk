@@ -1020,6 +1020,11 @@ def main():
                     pass
 
             new_rotate = cfg.get("fb_rotate") if cfg.get("fb_rotate") in (0, 90, 180, 270) else 0
+            # v0.1.48: 必须在 cfg 拿到后就立即算 _has_url_now —— 后续 line 1036 和 line 1049
+            # 都会引用它。如果在用之前才赋值，Python 会把整个函数体的 _has_url_now 当作
+            # 局部变量，导致 line 1036 触发 UnboundLocalError（v0.1.47 修复时埋下的 bug）。
+            _pages_now = cfg.get("pages") or []
+            _has_url_now = any(p.get("type") == "url" for p in _pages_now if isinstance(p, dict))
             # v0.1.35: 主循环只在「当前页面没有 per-page fit」时才覆盖 canvas._fit_mode，
             # 否则会覆盖 set_page() 里设置的 per-page fit（导致 fit 切换失效）。
             # 当前页面 = canvas._page（page 对象）或 pages 列表里 cycle 模式选中的页面。
@@ -1045,8 +1050,7 @@ def main():
             canvas._kiosk_css_pending = cfg.get("url_kiosk_css", "") or ""
             # 计算目标窗口尺寸（受 browser_window + display_zoom 共同影响）
             # v0.1.46: 与冷启动一致 —— 只要有 URL 页就强制 match_dashboard
-            _pages_now = cfg.get("pages") or []
-            _has_url_now = any(p.get("type") == "url" for p in _pages_now if isinstance(p, dict))
+            # v0.1.48: _has_url_now 已在 cfg 读取后立即算好（见 line ~1023），这里直接复用。
             if _has_url_now:
                 win = "match_dashboard"
             else:
