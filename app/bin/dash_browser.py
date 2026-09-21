@@ -638,8 +638,14 @@ class Browser:
             "      var ww=window.innerWidth||html.clientWidth||1024;"
             "      var wh=window.innerHeight||html.clientHeight||768;"
             "      if(!w||!h||!ww||!wh)return false;"
-            "      var s=Math.min(ww/w,wh/h,1);"
-            "      if(s<0.05||s>1)s=1;"
+            # v0.1.49: 去掉 ",1" 上限钳制 + "s>1" 的 fallback —— 允许 zoom > 1（放大）。
+            # 之前 bug：dashboard 内容（如 1365x500）比 viewport（1365x768）矮时，
+            # 算出来 s = min(1, 768/500, 1) = 1（被钳制），body 不放大，结果卡片
+            # 只占视口顶部 ~60%，下方留 dashboard 深色背景空白。
+            # 现在允许 zoom > 1，让 dashboard 内容放大填满视口（横向若超出靠
+            # body overflow:hidden 裁掉左右多余部分，dashboard 通常居中布局）。
+            "      var s=Math.min(ww/w,wh/h);"
+            "      if(s<0.05)s=1;"
             "      body.style.zoom=s;"
             "      var dbg=document.getElementById('__kiosk_fit_dbg');"
             "      if(!dbg){"
