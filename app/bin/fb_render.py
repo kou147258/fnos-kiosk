@@ -1034,12 +1034,16 @@ def main():
                 else "none"
             if page_fit == "none":
                 # display_fit 热加载（不需要重启 Chromium）
-                # v0.1.46: URL 页面强制 stretch（无视用户 display_fit 配置）——
-                # stretch 让 PIL 直接 resize 截图到 fb 尺寸，无黑边；contain/cover
-                # 会因 16:9 viewport vs 4:3 fb 长宽比差导致上下或左右黑边。
+                # v0.1.50: URL 页面强制 cover（无视用户 display_fit 配置）——
+                # cover 让 PIL 把 16:9 viewport 截图按比例放大到填满 fb 高度，
+                # 横向超出 fb 宽度的部分裁切掉（dashboard 居中布局时卡片完整可见）。
+                # 这才是「URL 像真浏览器那样铺满屏幕」的效果 —— 像图片查看器的 object-fit。
+                # 之前用 stretch：1365×768 viewport → 1024×768 fb 水平 squish ~25%，
+                # 但 dashboard 内容比 viewport 短时，下方仍留 dashboard 深色背景，
+                # 在 fb 上看起来还是有「上下黑带」（其实是 dashboard 自带背景）。
                 # 非 URL 页（图片/视频/HTML）才走用户的 display_fit 设置（默认 stretch）。
                 if _has_url_now:
-                    canvas._fit_mode = "stretch"
+                    canvas._fit_mode = "cover"
                 else:
                     canvas._fit_mode = (cfg.get("display_fit") or "stretch").lower()
                     if canvas._fit_mode not in ("contain", "cover", "stretch"):
