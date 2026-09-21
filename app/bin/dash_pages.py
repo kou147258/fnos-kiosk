@@ -187,14 +187,15 @@ def list_visible_pages(cfg):
     for p in (cfg.get("pages") or []):
         if not p.get("enabled"):
             continue
+        # v0.1.30: 移除内置模板支持（已废弃）。type=template 不会到这里（_sanitize_page
+        # 已经丢弃），但保留防御性判断以防外部直接构造的 page。
+        if p.get("type") == "template":
+            continue
         if p["type"] == "url":
             if not p.get("url"):
                 continue
         elif p["type"] in ("html_file", "media_file"):
             if not p.get("path"):
-                continue
-        elif p["type"] == "template":
-            if not p.get("template"):
                 continue
         else:
             continue
@@ -223,18 +224,13 @@ def find_single_page(pages):
 
 
 def resolve_url(page, page_store, http_port=0):
-    """把页面记录转换成 Chromium 真正加载的 URL（含 file:// 转写、模板拼接）。"""
+    """把页面记录转换成 Chromium 真正加载的 URL（含 file:// 转写）。"""
+    # v0.1.30: 移除 template 类型支持——已无内置模板。
+    if page.get("type") == "template":
+        return "about:blank"
     if page["type"] in ("html_file", "media_file"):
         try:
             return page_store.to_file_url(page["path"])
         except (ValueError, OSError):
             return "about:blank"
-    if page["type"] == "template":
-        # 模板放在 app/web/templates/<name>.html，由 dashboard HTTP 服务返回
-        # Chromium 通过 127.0.0.1:<HTTP_PORT> 访问，避免 file:// 跨域限制
-        name = page.get("template") or "clock"
-        # 限制名字在白名单内
-        if not re.fullmatch(r"[a-z0-9_-]{1,32}", name):
-            return "about:blank"
-        return "http://127.0.0.1:%d/templates/%s.html" % (http_port, name)
     return page.get("url") or "about:blank"

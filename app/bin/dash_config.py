@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.29"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.30"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -150,6 +150,11 @@ def _sanitize_page(raw, allow_private):
     p["id"] = pid
     p["name"] = _clip_str(raw.get("name"), 48) or pid
     ptype = raw.get("type")
+    # v0.1.30: 移除「内置模板」功能 (用户反馈模板在不同 fb / display_zoom 下表现不稳，
+    # 且 Chromium 直接打开 PNG 经常白屏)。旧配置里的 type=template 一律丢弃（返回 None
+    # 让 _merge_pages 跳过），不再尝试转换成 url 保留——避免出现「已配置但无页面」状态。
+    if ptype == "template":
+        return None
     if ptype in ("url", "html_file", "media_file"):
         p["type"] = ptype
     else:

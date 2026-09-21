@@ -55,7 +55,6 @@ function newPage() {
     type: "url",
     url: "https://example.com",
     path: "",
-    template: "clock",
     mode: "cycle",
     refresh_seconds: 0,
     zoom: 1.0,
@@ -67,6 +66,8 @@ function renderPageList() {
   var list = document.getElementById("page-list");
   list.textContent = "";
   cfg.pages.forEach(function (p, idx) {
+    // v0.1.30: 跳过模板类型（已废弃）。理论上 _sanitize_page 已经丢弃了，这里再防御一道。
+    if (p.type === "template") return;
     var div = document.createElement("div");
     div.className = "page-edit";
 
@@ -79,13 +80,12 @@ function renderPageList() {
     row1.appendChild(lab1); row1.appendChild(in1);
     div.appendChild(row1);
 
-    // 类型
+    // 类型（v0.1.30: 移除「✨ 内置模板」选项）
     var row2 = document.createElement("div");
     row2.className = "row";
     var lab2 = document.createElement("span"); lab2.className = "label-mini"; lab2.textContent = "类型";
     var sel = document.createElement("select");
-    [["url", "🌐 远程 URL"], ["html_file", "📝 本地 HTML"], ["media_file", "🎬 媒体文件（图片/视频）"],
-     ["template", "✨ 内置模板"]].forEach(function (o) {
+    [["url", "🌐 远程 URL"], ["html_file", "📝 本地 HTML"], ["media_file", "🎬 媒体文件（图片/视频）"]].forEach(function (o) {
       var op = document.createElement("option");
       op.value = o[0]; op.textContent = o[1];
       if (p.type === o[0]) op.selected = true;
@@ -116,7 +116,7 @@ function renderPageList() {
     row3.appendChild(lab3); row3.appendChild(seg);
     div.appendChild(row3);
 
-    // URL / path（按 type 切换）
+    // URL / path（按 type 切换；v0.1.30: 不再有 template 类型）
     var rowUrl = document.createElement("div");
     rowUrl.className = "row full";
     if (p.type === "url") {
@@ -126,20 +126,6 @@ function renderPageList() {
       inU.setAttribute("list", "recent-urls");   // 自动补全历史 URL
       inU.addEventListener("input", function () { p.url = inU.value; });
       rowUrl.appendChild(labU); rowUrl.appendChild(inU);
-    } else if (p.type === "template") {
-      var labT = document.createElement("span"); labT.className = "label-mini"; labT.textContent = "模板";
-      var selT = document.createElement("select");
-      selT.style.cssText = "background:rgba(0,0,0,.3);color:var(--text);border:1px solid var(--card-brd);border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit;flex:1";
-      [["clock", "🕐 大字时钟"], ["weather", "🌤️ 实时天气（wttr.in）"],
-       ["sysinfo", "💻 系统状态（CPU/内存/磁盘/网络）"]].forEach(function (o) {
-        var op = document.createElement("option");
-        op.value = o[0]; op.textContent = o[1];
-        if (p.template === o[0]) op.selected = true;
-        selT.appendChild(op);
-      });
-      if (p.template) selT.value = p.template;
-      selT.addEventListener("change", function () { p.template = selT.value; });
-      rowUrl.appendChild(labT); rowUrl.appendChild(selT);
     } else {
       var labP = document.createElement("span"); labP.className = "label-mini"; labP.textContent = "文件";
       var sel2 = document.createElement("select");
