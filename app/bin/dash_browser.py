@@ -633,20 +633,29 @@ class Browser:
             "      var body=document.body;"
             "      if(!body)return false;"
             "      var html=document.documentElement;"
-            "      var w=Math.max(body.scrollWidth,body.offsetWidth,html.scrollWidth,0);"
-            "      var h=Math.max(body.scrollHeight,body.offsetHeight,html.scrollHeight,0);"
+            # v0.1.52: 测 dashboard 根元素（body.firstElementChild）的实际高度，
+            # 而不是 body.scrollHeight。URL CSS 把 body 强制 100vh 时
+            # body.scrollHeight 永远是 768，跟 dashboard 实际内容高度无关，
+            # 导致 auto-fit 算出来 s=1 不放大。
+            # body.firstElementChild 有 height:auto（v0.1.51 释放了 height:100vh），
+            # offsetHeight 反映 dashboard 内容的真实高度。
+            "      var root=body.firstElementChild;"
+            "      if(!root)return false;"
+            "      var w=root.offsetWidth||root.scrollWidth||html.scrollWidth||0;"
+            "      var h=root.offsetHeight||root.scrollHeight||0;"
             "      var ww=window.innerWidth||html.clientWidth||1024;"
             "      var wh=window.innerHeight||html.clientHeight||768;"
             "      if(!w||!h||!ww||!wh)return false;"
-            # v0.1.49: 去掉 ",1" 上限钳制 + "s>1" 的 fallback —— 允许 zoom > 1（放大）。
-            # 之前 bug：dashboard 内容（如 1365x500）比 viewport（1365x768）矮时，
-            # 算出来 s = min(1, 768/500, 1) = 1（被钳制），body 不放大，结果卡片
-            # 只占视口顶部 ~60%，下方留 dashboard 深色背景空白。
-            # 现在允许 zoom > 1，让 dashboard 内容放大填满视口（横向若超出靠
-            # body overflow:hidden 裁掉左右多余部分，dashboard 通常居中布局）。
-            "      var s=Math.min(ww/w,wh/h);"
+            # v0.1.52: 用「填满 + 缩放」逻辑
+            # - 内容比视口大（任意方向）：zoom out 到能装下（取 min）
+            # - 内容比视口小（两方向都装得下）：zoom in 填满较大方向（取 max）
+            # 这就是用户要的「URL 像图片一样铺满 fb，缩放缩的是网页内部内容」：
+            # viewport 不变，dashboard 内容自动放大到铺满 viewport（可裁切一边）。
+            "      var sFit=Math.min(ww/w,wh/h);"
+            "      var sFill=Math.max(ww/w,wh/h);"
+            "      var s=(sFit<1)?sFit:sFill;"
             "      if(s<0.05)s=1;"
-            "      body.style.zoom=s;"
+            "      root.style.zoom=s;"
             "      var dbg=document.getElementById('__kiosk_fit_dbg');"
             "      if(!dbg){"
             "        dbg=document.createElement('div');"
