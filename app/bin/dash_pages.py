@@ -37,6 +37,24 @@ MAX_FILE_BYTES = 16 * 1024 * 1024
 _FILENAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 
 
+def _file_url(path):
+    """跨平台生成 file:// URL。
+
+    Linux 绝对路径 '/var/lib/x.png'  → 'file:///var/lib/x.png' (三个 /)
+    Windows 绝对路径 'C:\\Users\\x.png' → 'file:///C:/Users/x.png' (三个 /)
+    老代码 ('file://' + path.replace(os.sep, '/')) 在 Windows 上少一个 /
+    导致 Chromium 加载失败 ('file://C:/...' 协议头 + 主机 'C:' 无效)。
+    """
+    if not path:
+        return ""
+    s = str(path).replace(os.sep, "/")
+    if s.startswith("/"):
+        # Unix 绝对路径：file:// + /path = file:///path
+        return "file://" + s
+    # Windows 绝对路径（C:/...）需要额外加 /
+    return "file:///" + s
+
+
 def safe_filename(name):
     """检查文件名安全 + 后缀在白名单内。返回清理后的文件名或 ''。"""
     name = (name or "").strip()
@@ -204,9 +222,11 @@ class PageStore:
         base, _ = os.path.splitext(name)
         wrap_name = "_wrap_" + base + ".html"
         wrap_full = self._full(wrap_name)
-        # 用 absolute file:// 引用源文件
+        # v0.1.36: 跨平台 file:// URL。Linux 绝对路径 /var/lib/... → "file:///var/lib/..."；
+        # Windows 绝对路径 C:\Users\xxx → "file:///C:/Users/xxx"。老代码在 Windows 上
+        # 会写成 "file://C:/..."（少一个 /），Chromium 无法加载。
         src_full = os.path.realpath(self._full(name))
-        src_url = "file://" + src_full.replace(os.sep, "/")
+        src_url = _file_url(src_full)
         if kind == "image":
             tag = '<img src="%s" alt="">' % src_url
         else:
@@ -268,10 +288,9 @@ class PageStore:
             wrap_name = "_wrap_" + base + ".html"
             wrap_full = os.path.realpath(self._full(wrap_name))
             if os.path.isfile(wrap_full):
-                return "file://" + wrap_full.replace(os.sep, "/")
-        # 普通 HTML / SVG / 其他 → 直接 file://
-        url = "file://" + full.replace(os.sep, "/")
-        return url
+                return _file_url(wrap_full)
+        # 普通 HTML / SVG / 其他 → 直接 file://（v0.1.36 起跨平台）
+        return _file_url(full)
 
 
 def list_visible_pages(cfg):
