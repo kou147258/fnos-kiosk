@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.33"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.34"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -89,6 +89,22 @@ DEFAULT_PAGE = {
     "enabled": True,
 }
 
+# v0.1.34 默认注入的「URL 全屏化」CSS —— 把浏览器默认的 html/body margin
+# 清掉，强制铺满 1024×768 viewport。Chromium 视口本身已经是 1024×768（match_fb
+# 或自定义尺寸），但 URL 自带的 body { margin: 8px }、<html> 没设 100% 高度、
+# 子元素 fixed width 等都会让 URL 看起来「没填满」。!important 覆盖页面自身样式。
+#
+# 用户在 URL 设置 → 「URL 全屏 CSS」里可改/清空。空字符串 = 禁用注入。
+# 注意：定义必须在 DEFAULT_CONFIG 之前，否则 DEFAULT_CONFIG 引用会 NameError。
+DEFAULT_URL_KIOSK_CSS = (
+    "html,body{margin:0!important;padding:0!important;"
+    "width:100%!important;height:100%!important;"
+    "background:#000!important;overflow:hidden!important}"
+    "body>*{max-width:100vw!important;max-height:100vh!important;"
+    "box-sizing:border-box!important}"
+)
+
+
 DEFAULT_CONFIG = {
     "theme": "midnight",
     "accent": "",
@@ -106,6 +122,7 @@ DEFAULT_CONFIG = {
     "chromium_profile_dir": "", # 自定义 profile 路径（留空 = var/chromium-profile，自动持久化）
     "allow_private_hosts": False,    # 显式开启后才允许 192.168 / localhost
     "hide_cursor": True,
+    "url_kiosk_css": DEFAULT_URL_KIOSK_CSS,  # 注入到每个 URL 页面的 CSS；空 = 不注入
     "pages": [],
 }
 
@@ -284,6 +301,8 @@ class Config:
         out["fb_enabled"] = bool(out.get("fb_enabled"))
         out["hide_cursor"] = bool(out.get("hide_cursor"))
         out["allow_private_hosts"] = bool(out.get("allow_private_hosts"))
+        # v0.1.34: URL 全屏注入 CSS（裁剪到 4 KB 防止恶意 config 把脚本注入搞成 DOS）
+        out["url_kiosk_css"] = _clip_str(out.get("url_kiosk_css"), 4096) or ""
         # 页面列表：去重 id + 白名单
         pages = out.get("pages") or []
         seen = set()
@@ -354,6 +373,14 @@ class Config:
             clean["browser_timeout"] = _clip_int(patch["browser_timeout"], 5, 120, 30)
         if "browser_scale" in patch:
             clean["browser_scale"] = _clip_float(patch["browser_scale"], 0.5, 3.0, 1.0)
+        if "url_kiosk_css" in patch:
+            css = _clip_str(patch["url_kiosk_css"], 4096)
+            # 拒绝任何 <script> / on*= / javascript: / expression() 之类
+            # （即便 set_kiosk_css 只是塞 <style>，防御一下）
+            if css and re.search(r"<\s*script|on\w+\s*=|javascript\s*:|expression\s*\(",
+                                  css, re.IGNORECASE):
+                return False, "url_kiosk_css 含不安全内容（不允许 <script> / on*= / javascript:）"
+            clean["url_kiosk_css"] = css
         if "browser_window" in patch:
             w = patch["browser_window"]
             if isinstance(w, str) and w.lower() in ("match_fb", "fb", "auto"):

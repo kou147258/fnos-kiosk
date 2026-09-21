@@ -327,14 +327,18 @@ class BrowserCanvas:
         self._page_url = ""
         self._loaded_at = 0.0
         self._last_screenshot_ok = False
+        self._kiosk_css_pending = ""            # 来自 cfg["url_kiosk_css"]，set_page 写入
+        self._kiosk_css_applied = (None, None)  # (url_key, css) —— 跟踪已注入的 CSS，避免每帧重发
         self._error_msg = ""
         self._fit_mode = "stretch"  # cover/contain/stretch，主循环刷新；config 默认 stretch
 
-    def set_page(self, page):
+    def set_page(self, page, kiosk_css=""):
         self._page = page
         self._page_url = dash_pages.resolve_url(page, self.page_store,
                                                 http_port=self.http_port)
         self._loaded_at = 0.0  # 触发下次 begin() 重新导航
+        # 跟踪最新要求的 kiosk CSS；begin() 在导航前根据页面 type 判断是否实际注入
+        self._kiosk_css_pending = kiosk_css or ""
 
     def _render_background(self, pil_img):
         """把浏览器截屏按 fb 尺寸填充画布底层。
@@ -400,6 +404,18 @@ class BrowserCanvas:
                 self._error_msg = "Chromium 未运行"
                 return
             try:
+                # v0.1.34: URL 类型页面导航前先注入 url_kiosk_css（让 body/html
+                # 强制铺满 viewport，去除 URL 自带 margin / fixed-width 子元素）。
+                # 本地 HTML / 媒体文件（wrapper.html 是 kiosk 自己生成的）不注入，
+                # 否则会破坏 kiosk 自有布局。
+                page_type = self._page.get("type") or "url"
+                want_css = self._kiosk_css_pending if page_type == "url" else ""
+                if (page_type, want_css) != self._kiosk_css_applied:
+                    try:
+                        self.browser.set_kiosk_css(want_css)
+                    except Exception:
+                        pass
+                    self._kiosk_css_applied = (page_type, want_css)
                 self.browser.navigate(url, wait="load",
                                       timeout=int(self._page.get("timeout") or 30))
                 self._loaded_at = now
@@ -935,7 +951,8 @@ def main():
                         browser.connect()
                         canvas = BrowserCanvas(W, H, browser, page_store,
                                               http_port=_http_port)
-                        canvas.set_page(pages[0])
+                        canvas.set_page(pages[0],
+                                        kiosk_css=cfg.get("url_kiosk_css", ""))
                     except Exception as e:
                         print("[fb] Chromium 重建失败：%r" % e, flush=True)
                         break
@@ -996,7 +1013,8 @@ def main():
                     browser.connect()
                     canvas = BrowserCanvas(W, H, browser, page_store,
                                           http_port=_http_port)
-                    canvas.set_page(pages[0] if pages else None)
+                    canvas.set_page(pages[0] if pages else None,
+                                    kiosk_css=cfg.get("url_kiosk_css", ""))
                     main._restart_attempts = 0
                 except Exception as e:
                     print("[fb] 重启失败：%r" % e, flush=True)
@@ -1018,7 +1036,7 @@ def main():
             # 切换页面时刷新 canvas 目标
             if getattr(canvas, "_page", None) is None or \
                     canvas._page.get("id") != page.get("id"):
-                canvas.set_page(page)
+                canvas.set_page(page, kiosk_css=cfg.get("url_kiosk_css", ""))
 
             # 绘制
             draw_failed = False

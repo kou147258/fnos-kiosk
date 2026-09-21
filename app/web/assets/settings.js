@@ -710,7 +710,19 @@ function bindConfig() {
   document.getElementById("set-browser-timeout").addEventListener("input", function (e) { cfg.browser_timeout = parseInt(e.target.value, 10) || 30; });
   document.getElementById("set-hide-cursor").addEventListener("change", function (e) { cfg.hide_cursor = e.target.checked; });
   document.getElementById("set-allow-private").addEventListener("change", function (e) { cfg.allow_private_hosts = e.target.checked; });
+  // v0.1.34: URL 全屏 CSS 注入设置
+  document.getElementById("set-url-kiosk-css").addEventListener("input", function (e) { cfg.url_kiosk_css = e.target.value; });
+  document.getElementById("set-btn-reset-css").addEventListener("click", function () {
+    var ta = document.getElementById("set-url-kiosk-css");
+    ta.value = DEFAULT_URL_KIOSK_CSS;
+    cfg.url_kiosk_css = DEFAULT_URL_KIOSK_CSS;
+  });
 }
+
+// v0.1.34 默认注入 CSS —— 与 dash_config.DEFAULT_URL_KIOSK_CSS 保持一致。
+// 这里再写一份是因为 settings.js 是静态前端，不能 import Python。
+// 真值以 dash_config 为准；这里只是 UI 默认值，提交保存后服务端会原样落盘。
+var DEFAULT_URL_KIOSK_CSS = "html,body{margin:0!important;padding:0!important;width:100%!important;height:100%!important;background:#000!important;overflow:hidden!important}body>*{max-width:100vw!important;max-height:100vh!important;box-sizing:border-box!important}";
 
 function fillFromCfg() {
   document.getElementById("set-fb").checked = !!cfg.fb_enabled;
@@ -718,6 +730,9 @@ function fillFromCfg() {
   document.getElementById("set-accent").value = cfg.accent || "";
   document.getElementById("set-rotate").value = cfg.rotate_seconds || 30;
   document.getElementById("set-inches").value = cfg.screen_inches || 0;
+  // v0.1.34: URL 全屏 CSS 回填。空 = 留空（用户主动关掉了注入）。
+  document.getElementById("set-url-kiosk-css").value = (cfg.url_kiosk_css != null) ? cfg.url_kiosk_css : DEFAULT_URL_KIOSK_CSS;
+  document.getElementById("set-btn-default-css").textContent = DEFAULT_URL_KIOSK_CSS;
   // seg
   document.querySelectorAll("#seg-rotate button").forEach(function (b) {
     b.classList.toggle("active", parseInt(b.dataset.v, 10) === (cfg.fb_rotate || 0));

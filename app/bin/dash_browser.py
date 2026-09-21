@@ -274,6 +274,7 @@ class Browser:
         self._reader_th = None
         self._stderr_tail = []        # 简易诊断
         self._ws_url = ""
+        self._kiosk_css_id = None     # Page.addScriptToEvaluateOnNewDocument 返回的 identifier（用于 set_kiosk_css 替换）
 
     # ---- 启动 ----
     def start(self, log_path=None):
@@ -548,6 +549,84 @@ class Browser:
             self._events = []
         self.call("Page.reload", {"ignoreCache": True}, timeout=10)
         self.wait_event("Page.loadEventFired", timeout=timeout)
+
+    def set_kiosk_css(self, css):
+        """注册/替换一个会在每个新文档加载时自动注入的 CSS 段。
+
+        用于强制让 URL 页面去除默认 body margin、固定宽度子元素等，让它们
+        在 1024×768 viewport 里尽量铺满。
+
+        实现：调用 Page.addScriptToEvaluateOnNewDocument，注入的脚本会在
+        每次新建文档（包括同 tab 内的 Page.navigate、Page.reload、history
+        导航）时自动跑一遍。同一份脚本可被多次注册，因此每次调用先移除
+        上一次的 identifier（_kiosk_css_id）再注册新的，避免 <style>
+        元素在每次刷新后越来越多。
+
+        css 为空字符串：移除已注册的脚本（恢复页面原始样式）。
+        """
+        # 先移除旧的
+        if self._kiosk_css_id:
+            try:
+                self.call("Page.removeScriptToEvaluateOnNewDocument",
+                          {"identifier": self._kiosk_css_id}, timeout=3)
+            except Exception:
+                # 移除失败（脚本可能已失效）忽略即可
+                pass
+            self._kiosk_css_id = None
+        if not css:
+            return
+        # 注入脚本：把 <style id="__kiosk_injected_css"> 塞到 head。
+        # 用 DOMContentLoaded 包裹是因为脚本会在 DOM 构造前运行；
+        # 如果 document 已加载完成（about:blank → 直接 navigate 路径）
+        # 也直接 inject。
+        css_json = json.dumps(css)
+        js_src = (
+            "(function(){"
+            "function __kioskInject(){"
+            "  try{"
+            "    var old=document.getElementById('__kiosk_injected_css');"
+            "    if(old&&old.parentNode)old.parentNode.removeChild(old);"
+            "    var s=document.createElement('style');"
+            "    s.id='__kiosk_injected_css';"
+            "    s.textContent=" + css_json + ";"
+            "    (document.head||document.documentElement).appendChild(s);"
+            "  }catch(e){}"
+            "}"
+            "if(document.readyState==='loading'){"
+            "  document.addEventListener('DOMContentLoaded',__kioskInject);"
+            "}else{"
+            "  __kioskInject();"
+            "}"
+            "})();"
+            # DOMContentLoaded 之后再触发一次，处理 SPA / 框架动态替换 head 的情况
+            "(function(){"
+            "  function __kioskReapply(){"
+            "    try{"
+            "      if(!document.getElementById('__kiosk_injected_css')){"
+            "        var css=" + css_json + ";"
+            "        var s=document.createElement('style');"
+            "        s.id='__kiosk_injected_css';"
+            "        s.textContent=css;"
+            "        (document.head||document.documentElement).appendChild(s);"
+            "      }"
+            "    }catch(e){}"
+            "  }"
+            "  document.addEventListener('DOMContentLoaded',function(){"
+            "    setTimeout(__kioskReapply,100);"
+            "    setTimeout(__kioskReapply,500);"
+            "  });"
+            "  window.addEventListener('load',function(){"
+            "    setTimeout(__kioskReapply,100);"
+            "  });"
+            "})();"
+        )
+        try:
+            r = self.call("Page.addScriptToEvaluateOnNewDocument",
+                          {"source": js_src}, timeout=5)
+            self._kiosk_css_id = r.get("identifier") if isinstance(r, dict) else None
+        except Exception:
+            # 注册失败不影响后续导航，只是不注入 CSS
+            self._kiosk_css_id = None
 
     def alive(self):
         if self.proc is None or self.proc.poll() is not None:
