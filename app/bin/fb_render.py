@@ -761,10 +761,20 @@ def main():
         time.sleep(0.1)
 
     cfg = fetcher.config or {}
-    # browser_window 支持 "match_fb" 字符串（直接匹配 fb 物理尺寸，截图即屏）
-    bw_cfg = cfg.get("browser_window") or "match_fb"
-    if isinstance(bw_cfg, str) and bw_cfg.lower() in ("match_fb", "fb", "auto"):
-        win_w, win_h = W, H
+    # v0.1.42: 默认改为 "match_fb_wide"（保持 fb 长宽比，1.25 倍 fb 尺寸）
+    # —— 让 dashboard 自适应时填满 viewport，PIL 再缩到 fb，整页无黑边。
+    # 用户可显式设 browser_window 为 "match_fb" / [W, H] 数组覆盖。
+    bw_cfg = cfg.get("browser_window") or "match_fb_wide"
+    if isinstance(bw_cfg, str):
+        bw_lower = bw_cfg.lower()
+        if bw_lower in ("match_fb", "fb", "auto"):
+            win_w, win_h = W, H
+        elif bw_lower in ("match_fb_wide", "wide", "1.25x"):
+            # 保持 fb 长宽比 ×1.25（线性放大，每边都 1.25 倍）
+            # 1024×768 fb → 1280×960 viewport → dashboard 填满 → PIL scale → fb
+            win_w, win_h = int(W * 1.25), int(H * 1.25)
+        else:
+            win_w, win_h = W, H  # 未知字符串 → fallback match_fb
     else:
         win_w = int((bw_cfg or [1920, 1080])[0])
         win_h = int((bw_cfg or [1920, 1080])[1])
@@ -967,9 +977,15 @@ def main():
             # 这样设置页改了 url_kiosk_css 立即生效，无需切页。
             canvas._kiosk_css_pending = cfg.get("url_kiosk_css", "") or ""
             # 计算目标窗口尺寸（受 browser_window + display_zoom 共同影响）
-            win = cfg.get("browser_window") or "match_fb"
-            if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
-                new_w, new_h = W, H
+            win = cfg.get("browser_window") or "match_fb_wide"
+            if isinstance(win, str):
+                win_lower = win.lower()
+                if win_lower in ("match_fb", "fb", "auto"):
+                    new_w, new_h = W, H
+                elif win_lower in ("match_fb_wide", "wide", "1.25x"):
+                    new_w, new_h = int(W * 1.25), int(H * 1.25)
+                else:
+                    new_w, new_h = W, H
             else:
                 new_w = int(win[0])
                 new_h = int(win[1])

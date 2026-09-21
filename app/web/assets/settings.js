@@ -339,6 +339,8 @@ document.getElementById("seg-win-preset").addEventListener("click", function (e)
   }
   if (v === "match_fb") {
     cfg.browser_window = "match_fb";
+  } else if (v === "match_fb_wide" || v === "wide" || v === "1.25x") {
+    cfg.browser_window = "match_fb_wide";
   } else {
     var parts = v.split(",");
     cfg.browser_window = [parseInt(parts[0], 10), parseInt(parts[1], 10)];
@@ -864,11 +866,17 @@ function fillFromCfg() {
     document.getElementById("set-win-w").value = win[0];
     document.getElementById("set-win-h").value = win[1];
   } else {
-    // match_fb 时显示 fb 尺寸作为预览
+    // match_fb / match_fb_wide 时显示 fb 尺寸作为预览
     api("GET", "api/fb/info").then(function (j) {
       if (j && j.fb) {
-        document.getElementById("set-win-w").value = j.fb.w || "";
-        document.getElementById("set-win-h").value = j.fb.h || "";
+        var w = j.fb.w || "";
+        var h = j.fb.h || "";
+        if (win === "match_fb_wide" || (typeof win === "string" && win.toLowerCase() === "match_fb_wide")) {
+          w = Math.round(w * 1.25);
+          h = Math.round(h * 1.25);
+        }
+        document.getElementById("set-win-w").value = w;
+        document.getElementById("set-win-h").value = h;
       }
     }).catch(function () {});
   }

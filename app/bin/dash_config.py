@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.41"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.44"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -89,19 +89,44 @@ DEFAULT_PAGE = {
     "enabled": True,
 }
 
-# v0.1.34 默认注入的「URL 全屏化」CSS —— 把浏览器默认的 html/body margin
-# 清掉，强制铺满 1024×768 viewport。Chromium 视口本身已经是 1024×768（match_fb
-# 或自定义尺寸），但 URL 自带的 body { margin: 8px }、<html> 没设 100% 高度、
-# 子元素 fixed width 等都会让 URL 看起来「没填满」。!important 覆盖页面自身样式。
+# v0.1.43 默认注入的「URL 全屏化」CSS —— 把浏览器默认的 html/body margin
+# 清掉，强制铺满 viewport + 中文字体 fallback 链 + 强制 dashboard 容器宽高 100%。
+# Chromium 视口本身是 match_fb_wide（1280×960 for 1024×768 fb）→ 等比缩到 fb。
 #
 # 用户在 URL 设置 → 「URL 全屏 CSS」里可改/清空。空字符串 = 禁用注入。
 # 注意：定义必须在 DEFAULT_CONFIG 之前，否则 DEFAULT_CONFIG 引用会 NameError。
 DEFAULT_URL_KIOSK_CSS = (
+    # 基础：清 margin / 100% 宽高 / 强制 overflow:hidden + box-sizing
     "html,body{margin:0!important;padding:0!important;"
     "width:100%!important;height:100%!important;"
-    "background:#000!important;overflow:hidden!important}"
-    "body>*{max-width:100vw!important;max-height:100vh!important;"
+    "background:#000!important;overflow:hidden!important;"
     "box-sizing:border-box!important}"
+    # v0.1.44: body 直接子元素**强制**铺满 viewport（之前只是约束 max-width）
+    # —— 解决 dashboard 第一层 wrapper 没继承 100% 的问题
+    "body>*{width:100vw!important;height:100vh!important;"
+    "margin:0!important;padding:0!important;"
+    "max-width:none!important;max-height:none!important;"
+    "box-sizing:border-box!important}"
+    # body 第二层（孙元素）也强制铺满（防止 dashboard 第一层是 .outer 第二层是 .inner）
+    "body>*>*{width:100%!important;height:100%!important;"
+    "max-width:none!important;max-height:none!important;"
+    "box-sizing:border-box!important}"
+    # 中文字体 fallback —— Debian NAS 默认不含中文字体，
+    # 这里给一个长 fallback 链，匹配 apt install 的常见中文字体名。
+    "html,body,body *{"
+    "font-family:"
+    "'Noto Sans CJK SC','Noto Sans CJK TC','Source Han Sans SC','Source Han Sans CN',"
+    "'WenQuanYi Zen Hei','WenQuanYi Micro Hei',"
+    "'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Microsoft JhengHei',"
+    "'SimHei','SimSun',sans-serif"
+    "!important}"
+    # 强制常见 dashboard 容器宽高 100% + 字体继承
+    "#app,#root,.app,.container,.wrapper,.main,.content,.layout,.dashboard,.page,section,main,article{"
+    "width:100%!important;height:100%!important;max-width:none!important;"
+    "font-family:inherit!important;"
+    "display:flex!important;flex-direction:column!important}"
+    # 强制 SVG 文字 / canvas 自适应
+    "svg,canvas{max-width:100%!important;height:auto!important}"
 )
 
 
