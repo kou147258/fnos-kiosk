@@ -15,6 +15,17 @@ fi
 
 mkdir -p "$ETC_DIR" "$VAR_DIR"
 
+# v0.1.31：清理残留旧模板 HTML（v0.1.30 之前安装的版本会带 web/templates/*.html，
+# 这些文件升级时不会被替换。用户报告「已经 v0.1.30 但还是显示模板」就是因为旧
+# FPK 把 templates/*.html 留在 web/templates/ 下，Chromium 重新加载这些缓存。
+# 同时强制 display_zoom=1.0 和 display_fit=stretch（用户多次反馈被默认值之外的
+# 值卡住，怀疑是早期调试遗留）。
+rm -f "${ETC_DIR}/web/templates/clock.html" \
+      "${ETC_DIR}/web/templates/weather.html" \
+      "${ETC_DIR}/web/templates/sysinfo.html" 2>/dev/null || true
+# 顺手删 chromium profile 缓存（包含旧的 vue + page 缓存）
+rm -rf "${VAR_DIR}/chromium-profile" 2>/dev/null || true
+
 python3 - "$CFG_FILE" "$MODE" "$ROTATE" "$ROTATE_SEC" "$FB" <<'PY'
 import json, os, sys
 
@@ -47,19 +58,27 @@ cfg["fb_enabled"] = fb
 cfg.setdefault("theme", "midnight")
 cfg.setdefault("accent", "")
 cfg.setdefault("screen_inches", 0)
-# 首次安装给一条示例 URL（维基百科首页），便于开箱即用
-cfg.setdefault("pages", [
-    {
-        "id": "example",
-        "name": "示例页面",
-        "type": "url",
-        "url": "https://en.wikipedia.org/wiki/Main_Page",
-        "mode": "cycle",
-        "refresh_seconds": 0,
-        "zoom": 1.0,
-        "enabled": True,
-    }
-])
+# v0.1.31：强制 stretch（用户反馈 fb0 永远显示 letterbox 是因为 contain 没升级到位）
+cfg["display_fit"] = "stretch"
+# v0.1.31：强制 display_zoom=1.0（早期调试遗留值 200%/300% 会让 Chromium viewport 缩到 341×256，
+# templates / URL 全部乱套）。已经手动调过 zoom 的用户装 v0.1.31 后会回到 100%，需要重新微调。
+cfg["display_zoom"] = 1.0
+# 丢弃 type=template 的旧页面（用户反馈 v0.1.30 之后 config 仍有遗留）
+old_pages = cfg.get("pages") or []
+clean_pages = [p for p in old_pages if isinstance(p, dict) and p.get("type") != "template"]
+if clean_pages or old_pages:
+    cfg["pages"] = clean_pages if clean_pages else [
+        {
+            "id": "example",
+            "name": "示例页面",
+            "type": "url",
+            "url": "https://en.wikipedia.org/wiki/Main_Page",
+            "mode": "cycle",
+            "refresh_seconds": 0,
+            "zoom": 1.0,
+            "enabled": True,
+        }
+    ]
 
 with open(path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
