@@ -471,7 +471,15 @@ class Handler(BaseHTTPRequestHandler):
     # ---- 系统信息（给「系统状态」模板页面用）----
     def _sysinfo(self):
         import shutil, subprocess
-        info = {"hostname": os.uname().nodename, "cpu": {}, "mem": {},
+        try:
+            hostname = os.uname().nodename  # Linux/FreeBSD
+        except AttributeError:
+            try:
+                import socket
+                hostname = socket.gethostname()  # Windows / 任意平台兜底
+            except Exception:
+                hostname = ""
+        info = {"hostname": hostname, "cpu": {}, "mem": {},
                 "disk": {"parts": []}, "net": {}, "uptime": "", "loadavg": ""}
         # CPU
         try:
@@ -861,7 +869,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"ok": True, "fb": self._fb_info()})
             return
         if path == "/api/sysinfo":
-            self._send_json(200, self._sysinfo())
+            try:
+                self._send_json(200, self._sysinfo())
+            except Exception as e:
+                # 兜底：避免任何异常导致连接挂掉让前端永远「加载中…」
+                self._send_json(200, {"hostname": "", "cpu": {}, "mem": {},
+                                       "disk": {"parts": []}, "net": {},
+                                       "uptime": "", "loadavg": "",
+                                       "error": str(e)[:120]})
             return
         if path == "/api/fb/zoom-debug":
             # 调试：显示实际生效的窗口尺寸 = browser_window / display_zoom

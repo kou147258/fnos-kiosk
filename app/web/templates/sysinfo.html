@@ -34,43 +34,46 @@
 </div>
 <script>
 async function load() {
+  // 强制用 127.0.0.1 兜底（极少数 headless Chromium 对 localhost 解析有 bug）
+  const apiBase = location.origin || "http://127.0.0.1:" + (location.port || "8280");
   try {
-    const r = await fetch("/api/sysinfo");
+    const r = await fetch(apiBase + "/api/sysinfo", { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json();
     const c = j.cpu || {}, m = j.mem || {}, d = j.disk || {}, n = j.net || {}, u = j.uptime || "";
-    document.getElementById("title").textContent = "系统状态 · " + j.hostname;
+    document.getElementById("title").textContent = "系统状态 · " + (j.hostname || "?");
     document.getElementById("grid").innerHTML = `
       <div class="tile">
         <h2>CPU 使用率</h2>
-        <div class="big">${c.percent}%</div>
-        <div class="bar"><div style="width:${c.percent}%"></div></div>
-        <div class="small">${c.cores} 核 · 频率 ${c.freq_mhz} MHz</div>
+        <div class="big">${(c.percent || 0).toFixed ? c.percent.toFixed(1) : c.percent}%</div>
+        <div class="bar"><div style="width:${c.percent || 0}%"></div></div>
+        <div class="small">${c.cores || "?"} 核 · 频率 ${c.freq_mhz || "?"} MHz</div>
       </div>
       <div class="tile">
         <h2>内存</h2>
-        <div class="big">${m.percent}%</div>
-        <div class="bar"><div style="width:${m.percent}%"></div></div>
-        <div class="small">${m.used_gb} GB / ${m.total_gb} GB</div>
+        <div class="big">${m.percent || 0}%</div>
+        <div class="bar"><div style="width:${m.percent || 0}%"></div></div>
+        <div class="small">${m.used_gb || "?"} GB / ${m.total_gb || "?"} GB</div>
       </div>
       <div class="tile">
         <h2>磁盘</h2>
-        ${d.parts.map(p => `<div class="row"><span>${p.mount}</span><span>${p.used_gb}/${p.total_gb} GB (${p.percent}%)</span></div>`).join("")}
+        ${(d.parts || []).map(p => `<div class="row"><span>${p.mount}</span><span>${p.used_gb}/${p.total_gb} GB (${p.percent}%)</span></div>`).join("") || '<div class="small">无数据</div>'}
       </div>
       <div class="tile">
         <h2>网络</h2>
-        <div class="row"><span>↑ 上传</span><span>${n.tx_kbps} KB/s</span></div>
-        <div class="row"><span>↓ 下载</span><span>${n.rx_kbps} KB/s</span></div>
+        <div class="row"><span>↑ 上传</span><span>${n.tx_kbps || 0} KB/s</span></div>
+        <div class="row"><span>↓ 下载</span><span>${n.rx_kbps || 0} KB/s</span></div>
         <div class="row"><span>IP</span><span>${n.ip || "—"}</span></div>
       </div>
       <div class="tile">
         <h2>运行时间</h2>
-        <div class="big" style="font-size:clamp(20px,3vw,36px)">${u}</div>
+        <div class="big" style="font-size:clamp(20px,3vw,36px)">${u || "—"}</div>
         <div class="small">${j.loadavg || ""}</div>
       </div>`;
   } catch (e) {
     document.getElementById("grid").innerHTML =
-      `<div class="tile"><h2>加载失败</h2><div class="small">${e.message}</div></div>`;
+      `<div class="tile"><h2>⚠️ 加载失败</h2>
+        <div class="small">${e.message}<br>请检查：<br>1. dashboard 服务是否在运行<br>2. fb.log 看启动 banner 是否为最新版本<br>3. 浏览器直接打开 <a href="/api/sysinfo" style="color:#60a5fa">/api/sysinfo</a> 看返回</div></div>`;
   }
 }
 load();
