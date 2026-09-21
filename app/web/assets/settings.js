@@ -167,9 +167,8 @@ function renderPageList() {
     // 150, 200, 250, 300]%，点击直接应用；自定义值输入框用于精细调节（如 1.15）。
     var ZOOM_PRESETS = [0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
     function fmtZ(v) {
-      // 整数显示无小数；其它保留到 0.01
-      if (Math.abs(v - Math.round(v)) < 0.005) return Math.round(v) + "00".slice(0, 0) + "%";
-      return (v * 100).toFixed(0) + "%";
+      // 整数百分比：100% / 125% 等；统一用 (v*100).toFixed(0) 避免 1.0 → "1%" 的 bug
+      return Math.round(v * 100) + "%";
     }
     var segZ = document.createElement("div");
     segZ.className = "seg";

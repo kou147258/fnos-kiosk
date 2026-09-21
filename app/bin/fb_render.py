@@ -915,10 +915,22 @@ def main():
                     pass
 
             new_rotate = cfg.get("fb_rotate") if cfg.get("fb_rotate") in (0, 90, 180, 270) else 0
-            # display_fit 热加载（不需要重启 Chromium）
-            canvas._fit_mode = (cfg.get("display_fit") or "contain").lower()
-            if canvas._fit_mode not in ("contain", "cover", "stretch"):
-                canvas._fit_mode = "contain"
+            # v0.1.35: 主循环只在「当前页面没有 per-page fit」时才覆盖 canvas._fit_mode，
+            # 否则会覆盖 set_page() 里设置的 per-page fit（导致 fit 切换失效）。
+            # 当前页面 = canvas._page（page 对象）或 pages 列表里 cycle 模式选中的页面。
+            current_page = getattr(canvas, "_page", None)
+            page_fit = (current_page.get("fit") or "none").lower() \
+                if current_page and isinstance(current_page.get("fit"), str) \
+                else "none"
+            if page_fit == "none":
+                # display_fit 热加载（不需要重启 Chromium）
+                canvas._fit_mode = (cfg.get("display_fit") or "contain").lower()
+                if canvas._fit_mode not in ("contain", "cover", "stretch"):
+                    canvas._fit_mode = "contain"
+            # v0.1.35: url_kiosk_css 热加载。每帧把 cfg 上的最新值推给 canvas，
+            # begin() 内会和 _kiosk_css_applied 比较并决定是否重新 set_kiosk_css。
+            # 这样设置页改了 url_kiosk_css 立即生效，无需切页。
+            canvas._kiosk_css_pending = cfg.get("url_kiosk_css", "") or ""
             # 计算目标窗口尺寸（受 browser_window + display_zoom 共同影响）
             win = cfg.get("browser_window") or "match_fb"
             if isinstance(win, str) and win.lower() in ("match_fb", "fb", "auto"):
