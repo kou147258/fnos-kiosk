@@ -372,11 +372,13 @@ class BrowserCanvas:
 
     def begin(self, bg=None):
         """把当前页面渲染成底层画面。失败保留上一帧。"""
-        self.img.paste(bg if bg else (0, 0, 0), [0, 0, self.w, self.h])
-        # HUD 后续会用到 text/textlength/rectangle/ellipse——全部委托给
-        # ImageDraw on self.img（HUD 早期代码 d.textlength(...) / self.c.text(...)
-        # 等会直接走这些转发方法）
         from PIL import ImageDraw
+        self.img.paste(bg if bg else (0, 0, 0), [0, 0, self.w, self.h])
+        # 给 HUD 调用做准备：HUD 早期代码（self.c.textlength / self.c.text / self.c.rectangle
+        # / self.c.ellipse）——这些都是 ImageDraw 方法。BrowserCanvas 实例本身没有这些，
+        # 但 HUD 在 HUD.__init__ 里把 BrowserCanvas 实例存到 self.c。所以把 ImageDraw
+        # 的方法挂到 BrowserCanvas 上，让 HUD 的旧代码能继续跑。
+        # 注意：必须在 self.img.paste 之后执行（ImageDraw.Draw 需要 img 是当前的）。
         d = ImageDraw.Draw(self.img)
         self.textlength = d.textlength
         self.text = d.text
@@ -650,6 +652,8 @@ def main():
                   % (fb_attempts, delay, e), flush=True)
             time.sleep(delay)
     W, H = fb.w, fb.h
+    print("[fb] v%s fb_render starting" % __import__("dash_config").APP_VERSION,
+          flush=True)
     print("[fb] %dx%d stride=%d" % (W, H, fb.stride), flush=True)
 
     # ---- 立刻写一帧"启动中"屏到 fb0（不依赖 Chromium）----
