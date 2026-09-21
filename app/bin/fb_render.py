@@ -812,7 +812,12 @@ def main():
     pages_for_viewport = cfg.get("pages") or []
     has_url_page = any(p.get("type") == "url" for p in pages_for_viewport if isinstance(p, dict))
     if has_url_page:
-        bw_cfg = "match_fb"  # v0.1.55: was match_dashboard; fb 物理分辨率让 dashboard 不被横压
+        # v0.1.56: URL 永远用 dashboard 设计尺寸 1366×768 渲染。
+        # 不要用 fb 物理（4:3）—— 那会让 dashboard CSS 触发跟 desktop 不一样的断点，
+        # 卡片比例/列数都对不上 reference。让 dashboard 在 16:9 viewport 里自然排版
+        # （3×2 网格、字号、间距都跟桌面一致），PIL cover 把超过 fb 宽度的两侧裁掉。
+        # 「页面缩放」slider 仍然只 transform: scale 内容，URL viewport 自身不动。
+        bw_cfg = "match_dashboard"
     else:
         bw_cfg = cfg.get("browser_window") or "match_fb"
     print("[fb] 视口决策: has_url=%s bw=%s" % (has_url_page, bw_cfg), flush=True)
@@ -1056,7 +1061,9 @@ def main():
             # v0.1.46: 与冷启动一致 —— 只要有 URL 页就强制 match_dashboard
             # v0.1.48: _has_url_now 已在 cfg 读取后立即算好（见 line ~1023），这里直接复用。
             if _has_url_now:
-                win = "match_fb"  # v0.1.55: was match_dashboard; fb 物理分辨率
+                # v0.1.56: URL 永远 1366×768（dashboard 设计尺寸）渲染，
+                # PIL cover 适配 fb0 + 「页面缩放」只 transform: scale 内容。
+                win = "match_dashboard"
             else:
                 win = cfg.get("browser_window") or "match_fb"
             if isinstance(win, str):
