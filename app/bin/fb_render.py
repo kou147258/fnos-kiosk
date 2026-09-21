@@ -1074,11 +1074,17 @@ def main():
                 if current_page and isinstance(current_page.get("fit"), str) \
                 else "none"
             if _has_url_now:
-                # v0.1.51: URL 页面**总是**强制 cover（无视 page_fit 覆盖和 display_fit 配置）——
-                # 之前的 page_fit 优先逻辑会让用户保存的 per-page fit 覆盖我们的 cover，
-                # 导致黑带还在。URL 页面只有一个合理的 fit 模式（cover = 铺满 fb 裁切左右），
-                # 这里直接强制。
-                canvas._fit_mode = "cover"
+                # v0.1.61: URL 页面**强制 stretch**（不再是 cover）。
+                # ——理由：cover 模式下 PIL 把 chromium 1280×720 截图按 max(1024/1280, 768/720)
+                #   = 1.067 等比放成 1365×768 后裁 1024 宽 → fb 上 dashboard 高度
+                #   = chromium 704px（6 张卡 + header + padding），fb 768 高度剩下的
+                #   ~64px 永远是黑条。
+                # ——stretch 模式：横向 0.8、纵向 1.067 直接拉到位，**fb 上下完全填满**，
+                #   dashboard cards 视觉上卡片纵向比 reference 略高一点点（80:107 比例），
+                #   但完全消除 fb 黑条。
+                # ——非 URL 页（媒体文件 / 本地 HTML）仍走用户的 display_fit（默认 stretch），
+                #   行为不变。
+                canvas._fit_mode = "stretch"
             elif page_fit == "none":
                 # display_fit 热加载（不需要重启 Chromium）
                 # 非 URL 页才走用户的 display_fit 设置（默认 stretch）
