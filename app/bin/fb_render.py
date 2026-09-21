@@ -812,12 +812,13 @@ def main():
     pages_for_viewport = cfg.get("pages") or []
     has_url_page = any(p.get("type") == "url" for p in pages_for_viewport if isinstance(p, dict))
     if has_url_page:
-        # v0.1.56: URL 永远用 dashboard 设计尺寸 1366×768 渲染。
-        # 不要用 fb 物理（4:3）—— 那会让 dashboard CSS 触发跟 desktop 不一样的断点，
-        # 卡片比例/列数都对不上 reference。让 dashboard 在 16:9 viewport 里自然排版
-        # （3×2 网格、字号、间距都跟桌面一致），PIL cover 把超过 fb 宽度的两侧裁掉。
-        # 「页面缩放」slider 仍然只 transform: scale 内容，URL viewport 自身不动。
-        bw_cfg = "match_dashboard"
+        # v0.1.57: URL viewport **显式锁 1920×1080**（不基于 fb 推算 16:9 避免被 4:3 fb 带歪）。
+        # ——dashboard 设计尺寸。足够宽让任意 dashboard 的 3 列布局断点都会被触发
+        # （不管它的 breakpoint 是 1200px 还是 1600px），6 张卡完整、字号正常。
+        # PIL cover 把 1920×1080 铺满 fb（1024×768）→ 等比缩放 + 居中裁切：
+        # scale = max(1024/1920, 768/1080) = 0.711 → 截图变成 1365×768 → fb 1024×768。
+        # 「页面缩放」slider 完全不动 viewport，只 transform: scale 内容（v0.1.57 已修 reflow bug）。
+        bw_cfg = "match_dashboard"  # 实际尺寸在下面 elif 里硬编码走 url_desktop 分支
     else:
         bw_cfg = cfg.get("browser_window") or "match_fb"
     print("[fb] 视口决策: has_url=%s bw=%s" % (has_url_page, bw_cfg), flush=True)
@@ -829,19 +830,28 @@ def main():
             # 保持 fb 长宽比 ×1.25（线性放大，每边都 1.25 倍）
             # 1024×768 fb → 1280×960 viewport → dashboard 填满 → PIL scale → fb
             win_w, win_h = int(W * 1.25), int(H * 1.25)
-        elif bw_lower in ("match_dashboard", "16:9", "wide16"):
+        elif bw_lower in ("match_dashboard", "16:9", "wide16", "url_desktop"):
             # v0.1.45: 强制 16:9 viewport（dashboard 自然长宽比）→ PIL scale 到 fb → 整页无黑边
             # 算法：viewport 短边 = fb 短边 × 1.0（即 viewport 的 height = fb height for 横向 fb），
             #        长边按 16:9 算出 → PIL 横向 squish 把 viewport 长边缩到 fb 长边
             # 1024×768 fb → viewport 1366×768（×0.75 horiz, ×1.0 vert，dashboard 完整填 fb，水平 squish ~25%）
             # 1920×1080 fb → viewport 1920×1080（16:9 正好匹配，无 squish）
             # 1280×720 fb → viewport 1280×720（16:9 匹配）
-            if W >= H:
-                win_h = H
-                win_w = int(win_h * 16 / 9)
+            #
+            # v0.1.57 新增：如果本次是因为 URL 强制走到这里的（has_url_page=True），
+            # viewport 不再用 fb 推算的 1366，而是显式锁 1920×1080（dashboard 设计尺寸）。
+            # 这避免某些 dashboard 在 1366 宽度上 CSS 仍触发 2 列断点的情况。
+            if has_url_page:
+                # URL 专用：dashboard 设计尺寸，宽于大多数 dashboard 的 3 列断点
+                win_w, win_h = 1920, 1080
             else:
-                win_w = W
-                win_h = int(win_w * 16 / 9)
+                # 非 URL 页继续按 16:9 由 fb 推算（保留向后兼容）
+                if W >= H:
+                    win_h = H
+                    win_w = int(win_h * 16 / 9)
+                else:
+                    win_w = W
+                    win_h = int(win_w * 16 / 9)
         else:
             win_w, win_h = W, H  # 未知字符串 → fallback match_fb
     else:
@@ -1061,9 +1071,10 @@ def main():
             # v0.1.46: 与冷启动一致 —— 只要有 URL 页就强制 match_dashboard
             # v0.1.48: _has_url_now 已在 cfg 读取后立即算好（见 line ~1023），这里直接复用。
             if _has_url_now:
-                # v0.1.56: URL 永远 1366×768（dashboard 设计尺寸）渲染，
-                # PIL cover 适配 fb0 + 「页面缩放」只 transform: scale 内容。
-                win = "match_dashboard"
+                # v0.1.57: URL viewport 显式锁 1920×1080（dashboard 设计尺寸），
+                # PIL cover 适配 fb0 + 「页面缩放」slider 只 transform: scale 内容（不 reflow）。
+                # cfg 里有专门的 url_viewport 设置也没有，硬编码就够（这是 URL 与其他页本质的不同）。
+                win = "url_desktop"
             else:
                 win = cfg.get("browser_window") or "match_fb"
             if isinstance(win, str):
@@ -1073,12 +1084,19 @@ def main():
                 elif win_lower in ("match_fb_wide", "wide", "1.25x"):
                     new_w, new_h = int(W * 1.25), int(H * 1.25)
                 elif win_lower in ("match_dashboard", "16:9", "wide16"):
-                    if W >= H:
+                    # v0.1.57: URL 强制走 url_desktop（1920×1080）而不是按 fb 推算 16:9。
+                    # 客户端通过传 "match_dashboard" 字面量，所以这里要二次判断 has_url_now。
+                    if _has_url_now:
+                        new_w, new_h = 1920, 1080
+                    elif W >= H:
                         new_h = H
                         new_w = int(new_h * 16 / 9)
                     else:
                         new_w = W
                         new_h = int(new_w * 16 / 9)
+                elif win_lower == "url_desktop":
+                    # v0.1.57: URL 专用 viewport 1920×1080（dashboard 设计尺寸）
+                    new_w, new_h = 1920, 1080
                 else:
                     new_w, new_h = W, H
             else:

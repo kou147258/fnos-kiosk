@@ -639,25 +639,31 @@ class Browser:
             "  });"
             "})();"
             # v0.1.54: 取消自动 fit，只应用用户 zoom（dashboard 内容缩放）。
-            # 用户在设置页「页面缩放」滑块调的值（page.zoom）通过
-            # window.__kioskUserZoom 传入，dashboard 内容按这个比例 transform: scale。
-            # viewport 大小不变（永远是 match_dashboard 1365×768），
-            # 缩放只影响 dashboard 内容 —— 这就是用户要的「缩放缩网页内部内容」。
+            # v0.1.57 修复 CSS zoom reflow bug：之前 `root.style.zoom=userZoom` 会让 dashboard
+            # 容器物理尺寸缩到 N 倍，CSS Grid auto-fit 检测到容器宽度变小 → 自动回流到少一列
+            # （3 列变 2 列），用户感觉「整体 URL 大小跟着缩放 slider 在变」。
+            # 现在只走 transform: scale + transformBox: fill-box —— paint-scale，不 layout-reflow。
+            # 同时把 transform 应用到所有 body 直接子元素（不只是 firstElementChild），
+            # dashboard 多根节点（如 header+main+footer 三段式）也能均匀缩放。
             "(function(){"
             "  function __kioskApplyZoom(){"
             "    try{"
             "      var body=document.body;"
             "      if(!body)return false;"
-            "      var root=body.firstElementChild;"
-            "      if(!root)return false;"
             # 读取用户 zoom（默认值 1.0）
             "      var userZoom=parseFloat(window.__kioskUserZoom||'1.0')||1.0;"
             "      if(userZoom<0.3)userZoom=0.3;"
             "      if(userZoom>3.0)userZoom=3.0;"
-            # 应用到 dashboard 根，居中缩放（超出可视范围靠 overflow:hidden 裁切）
-            "      root.style.transform='scale('+userZoom+')';"
-            "      root.style.transformOrigin='center center';"
-            "      root.style.zoom=userZoom;"
+            # 应用到所有 body 直接子元素（绕开 debug label）
+            "      var kids=body.children;"
+            "      var i,n;"
+            "      for(i=0,n=kids.length;i<n;i++){"
+            "        var k=kids[i];"
+            "        if(k.id==='__kiosk_fit_dbg')continue;"
+            "        k.style.transform='scale('+userZoom+')';"
+            "        k.style.transformOrigin='center center';"
+            "        k.style.transformBox='fill-box';"
+            "      }"
             "      var dbg=document.getElementById('__kiosk_fit_dbg');"
             "      if(!dbg){"
             "        dbg=document.createElement('div');"
@@ -665,7 +671,7 @@ class Browser:
             "        dbg.style.cssText='position:fixed;top:2px;left:2px;background:#0f0;color:#000;padding:2px 6px;font:11px monospace;z-index:2147483647;line-height:1.2';"
             "        body.appendChild(dbg);"
             "      }"
-            "      dbg.textContent='zoom '+userZoom.toFixed(2);"
+            "      dbg.textContent='kiosk zoom '+userZoom.toFixed(2);"
             "      return true;"
             "    }catch(e){return false;}"
             "  }"
