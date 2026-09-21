@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.57"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.58"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -469,13 +469,32 @@ class Config:
             clean["url_kiosk_css"] = css
         if "browser_window" in patch:
             w = patch["browser_window"]
-            if isinstance(w, str) and w.lower() in ("match_fb", "fb", "auto"):
-                clean["browser_window"] = "match_fb"
-            else:
-                if not (isinstance(w, list) and len(w) == 2):
-                    return False, "browser_window 必须是 [W, H] 数组或 'match_fb'"
+            # v0.1.58: 之前 validator 只接受 "match_fb" 字面量 + [W, H] 数组，
+            # 但 UI 上「16:9 viewport」「自适应显示器 ×1.25」按钮会写入
+            # "match_dashboard" / "match_fb_wide"，还有 v0.1.57 新加的
+            # "url_desktop"——这三种字面量全被一刀切当非法值拒掉。
+            # 现在把所有合法 viewport 字符串都接受，并归一化到标准字面量。
+            if isinstance(w, str):
+                wl = w.lower()
+                if wl in ("match_fb", "fb", "auto"):
+                    clean["browser_window"] = "match_fb"
+                elif wl in ("match_dashboard", "16:9", "wide16", "url_desktop"):
+                    # 16:9 设计尺寸（1366×768 在 v0.1.56，1920×1080 在 v0.1.57
+                    # 因为 URL 页面强制走 url_desktop；非 URL 用户配置仍是
+                    # match_dashboard 由 fb_render 按 fb 推算 16:9）
+                    clean["browser_window"] = "match_dashboard"
+                elif wl in ("match_fb_wide", "wide", "1.25x"):
+                    # fb 长宽比 ×1.25（dashboard 自适应）
+                    clean["browser_window"] = "match_fb_wide"
+                else:
+                    return False, ("browser_window 取值非法：'%s'。"
+                                   "允许 'match_fb' / 'match_dashboard' / "
+                                   "'match_fb_wide' / [W, H] 数组") % w
+            elif isinstance(w, list) and len(w) == 2:
                 clean["browser_window"] = [_clip_int(w[0], 320, 7680, 1920),
                                            _clip_int(w[1], 240, 4320, 320)]
+            else:
+                return False, "browser_window 必须是字符串 ('match_fb' / 'match_dashboard' / 'match_fb_wide') 或 [W, H] 数组"
         if "pages" in patch:
             pages = patch["pages"]
             if not isinstance(pages, list):
