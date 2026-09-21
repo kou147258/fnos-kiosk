@@ -579,6 +579,10 @@ class Browser:
         # 用 DOMContentLoaded 包裹是因为脚本会在 DOM 构造前运行；
         # 如果 document 已加载完成（about:blank → 直接 navigate 路径）
         # 也直接 inject。
+        # v0.1.40: 同时注入 auto-fit JS —— 检测页面内容自然尺寸，若超出 viewport
+        # 则用 documentElement.style.zoom 自动缩放（不超出时 scale=1，无影响）。
+        # 这解决了"dashboard 给 1280+ 宽设计、Chromium viewport 只有 1024×768 时
+        # 右边和下边的卡片看不到"的问题（overflow:hidden 也让用户滚动不了）。
         css_json = json.dumps(css)
         js_src = (
             "(function(){"
@@ -617,6 +621,43 @@ class Browser:
             "  });"
             "  window.addEventListener('load',function(){"
             "    setTimeout(__kioskReapply,100);"
+            "  });"
+            "})();"
+            # v0.1.40: 自动 fit —— 算出文档自然尺寸（documentElement.scrollWidth/Height）
+            # 与 viewport（innerWidth/Height）的最小缩放比，对 html 应用
+            # documentElement.style.zoom，让内容超出 viewport 时自动缩小到铺满。
+            # 内容小于 viewport 时算出来 ≥1 → clamp 到 1（不变）。
+            "(function(){"
+            "  function __kioskFit(){"
+            "    try{"
+            "      var de=document.documentElement;"
+            "      var w=Math.max(de.scrollWidth,de.offsetWidth);"
+            "      var h=Math.max(de.scrollHeight,de.offsetHeight);"
+            "      var ww=window.innerWidth||de.clientWidth||1024;"
+            "      var wh=window.innerHeight||de.clientHeight||768;"
+            "      if(!w||!h||!ww||!wh)return;"
+            "      var s=Math.min(ww/w,wh/h,1);"
+            "      if(s<0.05||s>1)s=1;"
+            "      de.style.zoom=s;"
+            "    }catch(e){}"
+            "  }"
+            "  function __kioskFitStart(){"
+            "    __kioskFit();"
+            "    setTimeout(__kioskFit,200);"
+            "    setTimeout(__kioskFit,800);"
+            "    setTimeout(__kioskFit,2000);"
+            "  }"
+            "  if(document.readyState==='loading'){"
+            "    document.addEventListener('DOMContentLoaded',__kioskFitStart);"
+            "  }else{"
+            "    __kioskFitStart();"
+            "  }"
+            "  window.addEventListener('load',function(){"
+            "    setTimeout(__kioskFit,100);"
+            "    setTimeout(__kioskFit,500);"
+            "  });"
+            "  window.addEventListener('resize',function(){"
+            "    setTimeout(__kioskFit,200);"
             "  });"
             "})();"
         )
