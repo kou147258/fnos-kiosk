@@ -1032,22 +1032,18 @@ def main():
             page_fit = (current_page.get("fit") or "none").lower() \
                 if current_page and isinstance(current_page.get("fit"), str) \
                 else "none"
-            if page_fit == "none":
+            if _has_url_now:
+                # v0.1.51: URL 页面**总是**强制 cover（无视 page_fit 覆盖和 display_fit 配置）——
+                # 之前的 page_fit 优先逻辑会让用户保存的 per-page fit 覆盖我们的 cover，
+                # 导致黑带还在。URL 页面只有一个合理的 fit 模式（cover = 铺满 fb 裁切左右），
+                # 这里直接强制。
+                canvas._fit_mode = "cover"
+            elif page_fit == "none":
                 # display_fit 热加载（不需要重启 Chromium）
-                # v0.1.50: URL 页面强制 cover（无视用户 display_fit 配置）——
-                # cover 让 PIL 把 16:9 viewport 截图按比例放大到填满 fb 高度，
-                # 横向超出 fb 宽度的部分裁切掉（dashboard 居中布局时卡片完整可见）。
-                # 这才是「URL 像真浏览器那样铺满屏幕」的效果 —— 像图片查看器的 object-fit。
-                # 之前用 stretch：1365×768 viewport → 1024×768 fb 水平 squish ~25%，
-                # 但 dashboard 内容比 viewport 短时，下方仍留 dashboard 深色背景，
-                # 在 fb 上看起来还是有「上下黑带」（其实是 dashboard 自带背景）。
-                # 非 URL 页（图片/视频/HTML）才走用户的 display_fit 设置（默认 stretch）。
-                if _has_url_now:
-                    canvas._fit_mode = "cover"
-                else:
-                    canvas._fit_mode = (cfg.get("display_fit") or "stretch").lower()
-                    if canvas._fit_mode not in ("contain", "cover", "stretch"):
-                        canvas._fit_mode = "stretch"
+                # 非 URL 页才走用户的 display_fit 设置（默认 stretch）
+                canvas._fit_mode = (cfg.get("display_fit") or "stretch").lower()
+                if canvas._fit_mode not in ("contain", "cover", "stretch"):
+                    canvas._fit_mode = "stretch"
             # v0.1.35: url_kiosk_css 热加载。每帧把 cfg 上的最新值推给 canvas，
             # begin() 内会和 _kiosk_css_applied 比较并决定是否重新 set_kiosk_css。
             # 这样设置页改了 url_kiosk_css 立即生效，无需切页。
