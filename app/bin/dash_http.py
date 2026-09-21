@@ -394,6 +394,34 @@ class Handler(BaseHTTPRequestHandler):
                 "msg": "已清理登录态，渲染器已重启，请重新登录",
                 "removed": removed}
 
+    def _sync_page_wrappers(self, prev, cur):
+        """v0.1.35: settings 保存后扫描页面 fit 字段变化，对媒体文件重新生成 wrapper。
+
+        只对 type=media_file 且 fit 实际变化（含新增 fit）的页面触发，避免每次
+        保存都重写 wrapper。
+        """
+        from dash_pages import kind_of
+        prev_by_id = {p.get("id"): p for p in (prev.get("pages") or [])}
+        for p in (cur.get("pages") or []):
+            if p.get("type") != "media_file":
+                continue
+            path = p.get("path") or ""
+            if not path or kind_of(path) not in ("image", "video"):
+                continue
+            old_fit = (prev_by_id.get(p.get("id")) or {}).get("fit", "none")
+            new_fit = p.get("fit", "none")
+            if old_fit == new_fit:
+                continue
+            # 仅当 fit 落在 contain/cover/fill 时才需要重生成 wrapper
+            # （fit=none / stretch 不影响 wrapper object-fit，仍用默认 contain）
+            if new_fit not in ("contain", "cover", "fill"):
+                continue
+            try:
+                self.pages.regenerate_wrapper(path, fit=new_fit)
+            except Exception:
+                # 单个 wrapper 失败不影响其他页面
+                pass
+
     def _zoom_debug(self):
         """显示 fb_render 实际生效的窗口尺寸 = browser_window / display_zoom。
         帮助诊断「为什么 zoom 改了但没生效」之类的反馈。"""
@@ -937,6 +965,12 @@ class Handler(BaseHTTPRequestHandler):
             ok, err = self.config.update(patch)
             if ok:
                 cur = self.config.get()
+                # v0.1.35: 媒体文件 wrapper 重新生成（仅当 fit 实际变化时）
+                # — 避免每次保存都重写 wrapper 文件
+                try:
+                    self._sync_page_wrappers(prev, cur)
+                except Exception:
+                    pass
                 if fb_restart_needed(prev, cur):
                     self._fb_restart()
                 self._send_json(200, {"ok": True, "config": cur})
@@ -956,9 +990,14 @@ class Handler(BaseHTTPRequestHandler):
             encoding = (obj.get("encoding") or "text").lower()
             try:
                 if encoding == "base64":
-                    # 二进制上传（图片 / 视频）
+                    # 二进制上传（图片 / 视频）。v0.1.35：可选 fit 控制 wrapper 的
+                    # object-fit 模式（contain/cover/fill）
+                    fit = str(obj.get("fit") or "contain")
+                    if fit not in ("contain", "cover", "fill"):
+                        fit = "contain"
                     self.pages.write_bytes(str(obj["name"]),
-                                           str(obj.get("content", "")))
+                                           str(obj.get("content", "")),
+                                           fit=fit)
                 else:
                     self.pages.write(str(obj["name"]),
                                      str(obj.get("content", "")))

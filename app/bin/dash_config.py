@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.34"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.35"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -196,6 +196,13 @@ def _sanitize_page(raw, allow_private):
     p["mode"] = raw.get("mode") if raw.get("mode") in ("cycle", "single") else "cycle"
     p["refresh_seconds"] = _clip_int(raw.get("refresh_seconds"), 0, 86400, 0)
     p["zoom"] = _clip_float(raw.get("zoom"), 0.3, 3.0, 1.0)
+    # v0.1.35: per-page 画面适配模式（contain/cover/stretch/none）。
+    # "none"（默认）→ 走 cfg.display_fit；显式设置 → 覆盖全局（图片型 wrapper
+    # 也会按 fit 重新生成）。
+    p["fit"] = raw.get("fit") if raw.get("fit") in \
+        ("contain", "cover", "stretch", "none", None, "") else "none"
+    if not p["fit"]:
+        p["fit"] = "none"
     p["enabled"] = _bool(raw.get("enabled"), True)
     return p
 

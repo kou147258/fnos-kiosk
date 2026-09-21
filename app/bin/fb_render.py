@@ -339,6 +339,13 @@ class BrowserCanvas:
         self._loaded_at = 0.0  # 触发下次 begin() 重新导航
         # 跟踪最新要求的 kiosk CSS；begin() 在导航前根据页面 type 判断是否实际注入
         self._kiosk_css_pending = kiosk_css or ""
+        # v0.1.35: per-page fit 覆盖全局 display_fit。page.fit 是
+        # "none"/"stretch"/"contain"/"cover" 之一，"none" 时回退到 _fit_mode。
+        page_fit = (page.get("fit") or "none").lower() if isinstance(
+            page.get("fit"), str) else "none"
+        if page_fit in ("stretch", "contain", "cover"):
+            self._fit_mode = page_fit
+        # 否则保持 canvas._fit_mode 不变（主循环会用 cfg.display_fit 刷新）
 
     def _render_background(self, pil_img):
         """把浏览器截屏按 fb 尺寸填充画布底层。

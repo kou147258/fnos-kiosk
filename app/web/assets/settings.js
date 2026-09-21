@@ -58,6 +58,7 @@ function newPage() {
     mode: "cycle",
     refresh_seconds: 0,
     zoom: 1.0,
+    fit: "none",
     enabled: true,
   };
 }
@@ -158,14 +159,93 @@ function renderPageList() {
 
     var row5 = document.createElement("div");
     row5.className = "row";
-    var labZ = document.createElement("span"); labZ.className = "label-mini"; labZ.textContent = "缩放";
-    var inZ = document.createElement("input"); inZ.type = "number"; inZ.min = 0.3; inZ.max = 3; inZ.step = 0.1;
-    inZ.value = p.zoom || 1.0;
-    inZ.addEventListener("input", function () {
-      p.zoom = parseFloat(inZ.value) || 1.0;
+    row5.style.flexWrap = "wrap";
+    var labZ = document.createElement("span"); labZ.className = "label-mini";
+    labZ.textContent = "缩放";
+    labZ.style.minWidth = "48px";
+    // v0.1.35: 缩放改为 9 档分段按钮 + 自定义输入。预设值 [50, 67, 75, 100, 125,
+    // 150, 200, 250, 300]%，点击直接应用；自定义值输入框用于精细调节（如 1.15）。
+    var ZOOM_PRESETS = [0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+    function fmtZ(v) {
+      // 整数显示无小数；其它保留到 0.01
+      if (Math.abs(v - Math.round(v)) < 0.005) return Math.round(v) + "00".slice(0, 0) + "%";
+      return (v * 100).toFixed(0) + "%";
+    }
+    var segZ = document.createElement("div");
+    segZ.className = "seg";
+    segZ.id = "seg-page-zoom-" + (p.id || idx);
+    segZ.style.flexWrap = "wrap";
+    ZOOM_PRESETS.forEach(function (v) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.dataset.v = String(v);
+      b.textContent = fmtZ(v);
+      b.addEventListener("click", function () {
+        p.zoom = v;
+        renderPageList();  // 重新渲染以刷新高亮
+      });
+      segZ.appendChild(b);
     });
-    row5.appendChild(labZ); row5.appendChild(inZ);
+    var cur = parseFloat(p.zoom || 1.0);
+    segZ.querySelectorAll("button").forEach(function (b) {
+      var v = parseFloat(b.dataset.v);
+      b.classList.toggle("active", Math.abs(v - cur) < 0.005);
+    });
+    var inZ = document.createElement("input");
+    inZ.type = "number"; inZ.min = 0.3; inZ.max = 3; inZ.step = 0.05;
+    inZ.style.width = "72px";
+    inZ.title = "自定义缩放（0.3 ~ 3.0）";
+    inZ.value = (p.zoom != null) ? p.zoom : 1.0;
+    inZ.addEventListener("input", function () {
+      var v = parseFloat(inZ.value);
+      if (!isNaN(v) && v >= 0.3 && v <= 3) {
+        p.zoom = v;
+        // 取消 seg 高亮（不在预设列表里）
+        segZ.querySelectorAll("button").forEach(function (b) {
+          b.classList.remove("active");
+        });
+      }
+    });
+    row5.appendChild(labZ);
+    row5.appendChild(segZ);
+    row5.appendChild(inZ);
     div.appendChild(row5);
+
+    // v0.1.35: per-page 画面适配模式（none/stretch/contain/cover）
+    // "none"（默认）→ 跟随全局 display_fit；显式选择 → 覆盖全局
+    // 对 type=media_file 同时触发 wrapper 重生成（contain/cover/fill 改 object-fit）
+    var row6 = document.createElement("div");
+    row6.className = "row";
+    row6.style.flexWrap = "wrap";
+    var labF = document.createElement("span"); labF.className = "label-mini";
+    labF.textContent = "适配";
+    labF.style.minWidth = "48px";
+    var FIT_OPTIONS = [
+      ["none", "默认（跟随全局）"],
+      ["stretch", "↔ 拉伸"],
+      ["contain", "📐 完整可见"],
+      ["cover", "🖼 铺满裁切"]
+    ];
+    var segF = document.createElement("div");
+    segF.className = "seg";
+    FIT_OPTIONS.forEach(function (o) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.dataset.v = o[0];
+      b.textContent = o[1];
+      b.addEventListener("click", function () {
+        p.fit = o[0];
+        renderPageList();
+      });
+      segF.appendChild(b);
+    });
+    var curFit = (p.fit || "none");
+    segF.querySelectorAll("button").forEach(function (b) {
+      b.classList.toggle("active", b.dataset.v === curFit);
+    });
+    row6.appendChild(labF);
+    row6.appendChild(segF);
+    div.appendChild(row6);
 
     // 启用 + 删除 + 上移/下移
     var acts = document.createElement("div");
@@ -600,6 +680,7 @@ function registerAndDisplay(result, mode) {
     mode: mode || "single",
     refresh_seconds: 0,
     zoom: 1.0,
+    fit: "none",
     enabled: true,
   };
   // 移除同名旧页面（避免重复显示）

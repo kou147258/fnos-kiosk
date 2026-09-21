@@ -144,13 +144,16 @@ class PageStore:
             f.write(encoded)
         os.replace(tmp, full)
 
-    def write_bytes(self, name, data):
+    def write_bytes(self, name, data, fit="contain"):
         """写二进制（图片 / 视频）。data 必须为 bytes 或 base64 str。
 
         v0.1.33：媒体文件（image/video）会同时生成 `_wrap_<basename>.html`
         包裹层，用 CSS object-fit:contain 让 Chromium 把图片/视频填满 viewport
         —— 直接打开 PNG/JPG 时 Chromium 默认按原始像素居中、周围留黑边，
         那不是 letterbox，是浏览器的图像 viewer 行为。
+
+        v0.1.35：fit 选项传给 _write_wrapper，支持 contain / cover / fill 三种
+        object-fit 模式（用户可在设置页切换）。
         """
         full = self._full(name)
         if isinstance(data, str):
@@ -170,16 +173,34 @@ class PageStore:
         os.replace(tmp, full)
         # 媒体文件 → 同时生成 wrapper HTML（让图片/视频填满 viewport）
         if kind_of(name) in ("image", "video"):
-            self._write_wrapper(name, kind_of(name))
+            self._write_wrapper(name, kind_of(name), fit=fit)
 
-    def _write_wrapper(self, name, kind):
+    def regenerate_wrapper(self, name, fit="contain"):
+        """仅重新生成 wrapper（不改源文件）。用于设置页切换 fit 时无需重传图片。"""
+        if not safe_filename(name):
+            raise ValueError("非法文件名")
+        if kind_of(name) not in ("image", "video"):
+            return  # 非媒体文件没有 wrapper
+        full = self._full(name)
+        if not os.path.isfile(full):
+            raise ValueError("文件不存在：%s" % name)
+        self._write_wrapper(name, kind_of(name), fit=fit)
+
+    def _write_wrapper(self, name, kind, fit="contain"):
         """给媒体文件生成 _wrap_<basename>.html，CSS 让 img/video 填满 viewport。
 
-        HTML 结构最小：100vw × 100vh 容器，img/video 用 object-fit:contain
-        保比例（不裁切），background:#000 让非图像区显黑。
+        HTML 结构最小：100vw × 100vh 容器，img/video 用 object-fit（v0.1.35 起
+        用户可切换 contain/cover/fill）保比例或铺满，background:#000 让非图像区显黑。
+
+        fit 参数：
+          - "contain"（默认）：保持比例完整显示，不裁切，可能留黑边
+          - "cover"          ：等比缩放铺满容器，超出部分裁切
+          - "fill"           ：强制拉伸填满（不保比例，类似 stretch）
         """
         if not safe_filename(name):
             return
+        if fit not in ("contain", "cover", "fill"):
+            fit = "contain"
         base, _ = os.path.splitext(name)
         wrap_name = "_wrap_" + base + ".html"
         wrap_full = self._full(wrap_name)
@@ -195,6 +216,7 @@ class PageStore:
         # 文件名做 title（HTML escape）
         import html as _html
         title = _html.escape(name)
+        # cover 时配合 object-position:center 让裁切从中心进行
         body = (
             '<!DOCTYPE html>\n'
             '<html><head><meta charset="UTF-8">\n'
@@ -203,10 +225,10 @@ class PageStore:
             'html,body{margin:0;padding:0;width:100vw;height:100vh;'
             'overflow:hidden;background:#000}\n'
             'img,video{width:100vw;height:100vh;'
-            'object-fit:contain;display:block}\n'
+            'object-fit:%s;object-position:center;display:block}\n'
             '</style></head>\n'
             '<body>%s</body></html>\n'
-        ) % (title, tag)
+        ) % (title, fit, tag)
         tmp = wrap_full + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(body)
