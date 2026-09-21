@@ -877,6 +877,17 @@ function fillFromCfg() {
   document.querySelectorAll("#seg-fit button").forEach(function (b) {
     b.classList.toggle("active", b.dataset.v === (cfg.display_fit || "contain"));
   });
+  // 把当前 zoom + browser_window + fb 实际尺寸 → 推算 Chromium 实际窗口大小
+  // 显示在 zoom 段的 hint 里，让用户能立刻看到「缩放有没有真的生效」
+  api("GET", "api/fb/zoom-debug").then(function (j) {
+    var fbEl = document.getElementById("fb-fb-size");
+    var effEl = document.getElementById("fb-effective-win");
+    if (j && fbEl) fbEl.textContent = (j.fb_physical[0] || 0) + " × " + (j.fb_physical[1] || 0);
+    if (j && effEl) effEl.textContent =
+      (j.effective_chromium_window[0] || 0) + " × " +
+      (j.effective_chromium_window[1] || 0) +
+      " (zoom " + (j.display_zoom_config || 1) + "×)";
+  }).catch(function () {});
   document.querySelectorAll("#seg-zoom button").forEach(function (b) {
     var v = parseFloat(b.dataset.v);
     var cur = parseFloat(cfg.display_zoom || 1);

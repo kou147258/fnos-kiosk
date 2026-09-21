@@ -395,6 +395,45 @@ class Handler(BaseHTTPRequestHandler):
                 "msg": "已清理登录态，渲染器已重启，请重新登录",
                 "removed": removed}
 
+    def _zoom_debug(self):
+        """显示 fb_render 实际生效的窗口尺寸 = browser_window / display_zoom。
+        帮助诊断「为什么 zoom 改了但没生效」之类的反馈。"""
+        cfg = self.config.get() if self.config else {}
+        fb_w = fb_h = 0
+        try:
+            base = "/sys/class/graphics/fb0"
+            vs = open(os.path.join(base, "virtual_size")).read().strip()
+            fb_w, fb_h = (int(x) for x in vs.split(",")[:2])
+        except (OSError, ValueError, IndexError):
+            pass
+        win_cfg = cfg.get("browser_window") or "match_fb"
+        if isinstance(win_cfg, str) and win_cfg.lower() in ("match_fb", "fb", "auto"):
+            base_w, base_h = fb_w, fb_h
+        elif isinstance(win_cfg, list) and len(win_cfg) == 2:
+            base_w, base_h = int(win_cfg[0]), int(win_cfg[1])
+        else:
+            base_w, base_h = fb_w, fb_h
+        zoom = float(cfg.get("display_zoom", 1.0) or 1.0)
+        if zoom <= 0:
+            zoom = 1.0
+        effective_w = max(320, int(base_w / zoom))
+        effective_h = max(240, int(base_h / zoom))
+        return {
+            "ok": True,
+            "fb_physical": [fb_w, fb_h],
+            "browser_window_config": win_cfg,
+            "browser_window_base": [base_w, base_h],
+            "display_zoom_config": zoom,
+            "effective_chromium_window": [effective_w, effective_h],
+            "display_fit": cfg.get("display_fit", "contain"),
+            "fb_rotate": cfg.get("fb_rotate", 0),
+            "cdp_port": int(os.environ.get("KIOSK_CDP_PORT")
+                            or (self.http_port + 1023)),
+            "tip": ("zoom>1 → window 缩小 → fb 上看起来内容更大；"
+                    "zoom<1 → window 放大 → fb 上能看到更多内容。"
+                    "保存后会触发 fb_render 重启生效。"),
+        }
+
     def _fb_info(self):
         info = {"exists": os.path.exists("/dev/fb0"), "w": 0, "h": 0,
                 "bpp": 0, "pil": False, "renderer_running": False}
@@ -957,6 +996,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/sysinfo":
             self._send_json(200, self._sysinfo())
+            return
+        if path == "/api/fb/zoom-debug":
+            # 调试：显示实际生效的窗口尺寸 = browser_window / display_zoom
+            self._send_json(200, self._zoom_debug())
             return
         if path == "/api/config/export":
             self._config_export()
