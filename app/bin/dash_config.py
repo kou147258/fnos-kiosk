@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.53"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.54"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -101,13 +101,12 @@ DEFAULT_URL_KIOSK_CSS = (
     "width:100%!important;height:100%!important;"
     "background:#000!important;overflow:hidden!important;"
     "box-sizing:border-box!important}"
-    # v0.1.51: body 直接子元素**横向铺满 viewport，纵向跟内容走**（之前 height:100vh
-    # 让 body.scrollHeight 被强制为 100vh，auto-fit JS 测到的 h=768，s=min(1,1)=1
-    # 不放大 —— dashboard 内容只占视口顶部 ~70%，下方空着，看起来像「上下黑带」）。
-    # 现在 height:auto 让 body 高度反映实际内容，auto-fit JS 能测到真实高度
-    # （比如 1365x600），s = min(ww/w, wh/h) = min(1, 768/600) = 1.28 → zoom in
-    # 把 dashboard 放大到铺满 viewport。横向超出部分靠 overflow:hidden 裁切。
-    "body>*{width:100vw!important;height:auto!important;"
+    # v0.1.54: 恢复 body > * 强制 100vw × 100vh（之前 v0.1.51 改成 height:auto
+    # 是为了配合 auto-fit 测真实高度；现在 v0.1.54 取消了 auto-fit 改用用户手动 zoom，
+    # body > * 应该强制填满 viewport，dashboard 内容自然铺满 1365×768 视口）。
+    # 用户调 zoom 时，dashboard 内容 transform: scale 居中缩放（超出部分靠
+    # body overflow:hidden 裁切），viewport 大小不变。
+    "body>*{width:100vw!important;height:100vh!important;"
     "margin:0!important;padding:0!important;"
     "max-width:none!important;max-height:none!important;"
     "box-sizing:border-box!important}"

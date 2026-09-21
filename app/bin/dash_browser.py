@@ -638,50 +638,26 @@ class Browser:
             "    setTimeout(__kioskReapply,100);"
             "  });"
             "})();"
-            # v0.1.40: 自动 fit —— 算出文档自然尺寸（documentElement.scrollWidth/Height）
-            # 与 viewport（innerWidth/Height）的最小缩放比，对 html 应用
-            # documentElement.style.zoom，让内容超出 viewport 时自动缩小到铺满。
-            # 内容小于 viewport 时算出来 ≥1 → clamp 到 1（不变）。
+            # v0.1.54: 取消自动 fit，只应用用户 zoom（dashboard 内容缩放）。
+            # 用户在设置页「页面缩放」滑块调的值（page.zoom）通过
+            # window.__kioskUserZoom 传入，dashboard 内容按这个比例 transform: scale。
+            # viewport 大小不变（永远是 match_dashboard 1365×768），
+            # 缩放只影响 dashboard 内容 —— 这就是用户要的「缩放缩网页内部内容」。
             "(function(){"
-            "  function __kioskFit(){"
+            "  function __kioskApplyZoom(){"
             "    try{"
             "      var body=document.body;"
             "      if(!body)return false;"
-            "      var html=document.documentElement;"
-            # v0.1.52: 测 dashboard 根元素（body.firstElementChild）的实际高度，
-            # 而不是 body.scrollHeight。URL CSS 把 body 强制 100vh 时
-            # body.scrollHeight 永远是 768，跟 dashboard 实际内容高度无关，
-            # 导致 auto-fit 算出来 s=1 不放大。
-            # body.firstElementChild 有 height:auto（v0.1.51 释放了 height:100vh），
-            # offsetHeight 反映 dashboard 内容的真实高度。
             "      var root=body.firstElementChild;"
             "      if(!root)return false;"
-            "      var w=root.offsetWidth||root.scrollWidth||html.scrollWidth||0;"
-            "      var h=root.offsetHeight||root.scrollHeight||0;"
-            "      var ww=window.innerWidth||html.clientWidth||1024;"
-            "      var wh=window.innerHeight||html.clientHeight||768;"
-            "      if(!w||!h||!ww||!wh)return false;"
-            # v0.1.52: 用「填满 + 缩放」逻辑
-            # - 内容比视口大（任意方向）：zoom out 到能装下（取 min）
-            # - 内容比视口小（两方向都装得下）：zoom in 填满较大方向（取 max）
-            # v0.1.53: 改用 transform: scale + transform-origin: center，
-            # 替代 style.zoom（zoom 默认 origin 是左上角 0,0，导致 dashboard
-            # 从左上角向外扩，左侧/上侧被裁切，只看到右上角放大的部分）。
-            # 用 transform: scale + center origin 后 dashboard 居中放大，
-            # 左右两侧均匀裁切，dashboard 居中布局时核心内容（卡片）始终居中可见。
-            # v0.1.53: 支持用户可调 zoom（设置页「页面缩放」50%-300%）——
-            # 用户缩放只影响 dashboard 内容，不影响 viewport 大小。
-            # 缩放值通过 window.__kioskUserZoom 传入（fb_render 通过 Page.addScriptToEvaluateOnNewDocument 注入）。
+            # 读取用户 zoom（默认值 1.0）
             "      var userZoom=parseFloat(window.__kioskUserZoom||'1.0')||1.0;"
-            "      var sFit=Math.min(ww/w,wh/h);"
-            "      var sFill=Math.max(ww/w,wh/h);"
-            "      var sAuto=(sFit<1)?sFit:sFill;"
-            "      var s=sAuto*userZoom;"
-            "      if(s<0.05)s=0.5;"
-            "      if(s>10)s=10;"
-            "      root.style.transform='scale('+s+')';"
+            "      if(userZoom<0.3)userZoom=0.3;"
+            "      if(userZoom>3.0)userZoom=3.0;"
+            # 应用到 dashboard 根，居中缩放（超出可视范围靠 overflow:hidden 裁切）
+            "      root.style.transform='scale('+userZoom+')';"
             "      root.style.transformOrigin='center center';"
-            "      root.style.zoom=s;"
+            "      root.style.zoom=userZoom;"
             "      var dbg=document.getElementById('__kiosk_fit_dbg');"
             "      if(!dbg){"
             "        dbg=document.createElement('div');"
@@ -689,27 +665,27 @@ class Browser:
             "        dbg.style.cssText='position:fixed;top:2px;left:2px;background:#0f0;color:#000;padding:2px 6px;font:11px monospace;z-index:2147483647;line-height:1.2';"
             "        body.appendChild(dbg);"
             "      }"
-            "      dbg.textContent='fit '+s.toFixed(2)+' ('+w+'x'+h+'->'+ww+'x'+wh+')';"
+            "      dbg.textContent='zoom '+userZoom.toFixed(2);"
             "      return true;"
             "    }catch(e){return false;}"
             "  }"
-            "  function __kioskFitStart(){"
-            "    __kioskFit();"
-            "    [200,800,2000,5000,10000].forEach(function(d){setTimeout(__kioskFit,d);});"
+            "  function __kioskApplyZoomStart(){"
+            "    __kioskApplyZoom();"
+            "    [200,800,2000,5000,10000].forEach(function(d){setTimeout(__kioskApplyZoom,d);});"
             "  }"
             "  if(document.readyState==='loading'){"
-            "    document.addEventListener('DOMContentLoaded',__kioskFitStart);"
+            "    document.addEventListener('DOMContentLoaded',__kioskApplyZoomStart);"
             "  }else{"
-            "    __kioskFitStart();"
+            "    __kioskApplyZoomStart();"
             "  }"
             "  window.addEventListener('load',function(){"
-            "    [100,500,2000,5000].forEach(function(d){setTimeout(__kioskFit,d);});"
+            "    [100,500,2000,5000].forEach(function(d){setTimeout(__kioskApplyZoom,d);});"
             "  });"
-            "  window.addEventListener('resize',function(){setTimeout(__kioskFit,200);});"
+            "  window.addEventListener('resize',function(){setTimeout(__kioskApplyZoom,200);});"
             "  try{"
             "    var mo=new MutationObserver(function(){"
             "      clearTimeout(window.__kioskMoT);"
-            "      window.__kioskMoT=setTimeout(__kioskFit,500);"
+            "      window.__kioskMoT=setTimeout(__kioskApplyZoom,500);"
             "    });"
             "    mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true});"
             "  }catch(e){}"
