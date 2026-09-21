@@ -7,24 +7,42 @@
   html, body { margin:0; padding:0; height:100%; background:#0f172a; color:#e8eef7;
     font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
     overflow:hidden; }
-  .stage { padding: 4vh 6vw; height:100vh; box-sizing:border-box; }
-  h1 { font-weight:300; font-size: clamp(24px, 4vw, 56px); margin:0 0 30px;
-    color:#60a5fa; letter-spacing:0.1em; }
-  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap:24px; }
-  .tile { background:rgba(30,41,59,0.5); border-radius:16px; padding:24px 28px;
-    border:1px solid rgba(96,165,250,0.2); }
-  .tile h2 { font-size:16px; color:#94a3b8; margin:0 0 12px; font-weight:400; letter-spacing:0.1em; }
-  .tile .big { font-size: clamp(28px, 5vw, 56px); font-weight:200; line-height:1.1;
-    color:#fbbf24; font-variant-numeric:tabular-nums; }
-  .tile .small { font-size:14px; color:#64748b; margin-top:8px; }
-  .bar { height:8px; background:#1e293b; border-radius:4px; margin-top:14px; overflow:hidden; }
+  /* 撑满 fb0：padding 用 vh/vw，height 锁 100vh，box-sizing 算 padding */
+  .stage { padding: 3vh 4vw; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+  h1 { font-weight:300; font-size: clamp(20px, 3vh, 44px); margin:0 0 2vh;
+    color:#60a5fa; letter-spacing:0.1em; flex: 0 0 auto; }
+  /* 关键修复：grid 撑满 viewport 的剩余高度（100vh - h1 - margins），tile 自适应均分。
+     不再依赖内容数量撑满——以前 5 个 tile 不管 display_zoom 多大都不会填满 fb0。 */
+  .grid {
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-auto-rows: 1fr;
+    gap: clamp(8px, 1.2vh, 18px);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .tile { background:rgba(30,41,59,0.5); border-radius: clamp(8px, 1.2vh, 18px);
+    padding: clamp(12px, 1.8vh, 24px) clamp(14px, 1.6vw, 28px);
+    border:1px solid rgba(96,165,250,0.2);
+    display:flex; flex-direction:column; justify-content:flex-start; min-height:0; overflow:hidden; }
+  .tile h2 { font-size: clamp(12px, 1.6vh, 18px); color:#94a3b8; margin:0 0 1vh;
+    font-weight:400; letter-spacing:0.1em; flex: 0 0 auto; }
+  .tile .big { font-size: clamp(22px, 5vh, 56px); font-weight:200; line-height:1.05;
+    color:#fbbf24; font-variant-numeric:tabular-nums; flex: 0 0 auto; }
+  .tile .small { font-size: clamp(10px, 1.4vh, 14px); color:#64748b; margin-top:0.5vh; flex: 0 0 auto; }
+  .bar { height: clamp(4px, 1vh, 10px); background:#1e293b; border-radius:4px; margin-top:1vh; overflow:hidden; }
   .bar > div { height:100%; background:linear-gradient(90deg,#60a5fa,#fbbf24,#ef4444);
     transition:width 0.5s; border-radius:4px; }
-  .row { display:flex; justify-content:space-between; padding:6px 0;
-    border-bottom:1px solid rgba(96,165,250,0.1); font-size:14px; }
+  .row { display:flex; justify-content:space-between; padding: clamp(2px, 0.5vh, 6px) 0;
+    border-bottom:1px solid rgba(96,165,250,0.1); font-size: clamp(11px, 1.4vh, 15px); }
   .row:last-child { border-bottom:0; }
   .row span:last-child { color:#fbbf24; font-variant-numeric:tabular-nums; }
+  /* 当 fb 高度很小（比如 display_zoom > 1 让视口变小）时减少 padding */
+  @media (max-height: 360px) {
+    .stage { padding: 2vh 3vw; }
+    h1 { font-size: 16px; margin: 0 0 1vh; }
+    .grid { gap: 6px; }
+  }
 </style>
 </head>
 <body>
