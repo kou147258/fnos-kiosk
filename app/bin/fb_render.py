@@ -390,8 +390,8 @@ class BrowserCanvas:
                  否则拉伸就抵消了 zoom）。
         """
         bw, bh = pil_img.size
-        fit_mode = (self._fit_mode or "contain").lower() if hasattr(
-            self, "_fit_mode") else "contain"
+        fit_mode = (self._fit_mode or "stretch").lower() if hasattr(
+            self, "_fit_mode") else "stretch"
         # 缩小版（zoom<1）：shot 已比 fb 小，强制居中黑边（不拉伸）
         if zoom_applied < 1.0 - 0.01 and (bw < self.w or bh < self.h):
             self.img.paste((0, 0, 0), [0, 0, self.w, self.h])
@@ -1029,9 +1029,16 @@ def main():
                 else "none"
             if page_fit == "none":
                 # display_fit 热加载（不需要重启 Chromium）
-                canvas._fit_mode = (cfg.get("display_fit") or "contain").lower()
-                if canvas._fit_mode not in ("contain", "cover", "stretch"):
-                    canvas._fit_mode = "contain"
+                # v0.1.46: URL 页面强制 stretch（无视用户 display_fit 配置）——
+                # stretch 让 PIL 直接 resize 截图到 fb 尺寸，无黑边；contain/cover
+                # 会因 16:9 viewport vs 4:3 fb 长宽比差导致上下或左右黑边。
+                # 非 URL 页（图片/视频/HTML）才走用户的 display_fit 设置（默认 stretch）。
+                if _has_url_now:
+                    canvas._fit_mode = "stretch"
+                else:
+                    canvas._fit_mode = (cfg.get("display_fit") or "stretch").lower()
+                    if canvas._fit_mode not in ("contain", "cover", "stretch"):
+                        canvas._fit_mode = "stretch"
             # v0.1.35: url_kiosk_css 热加载。每帧把 cfg 上的最新值推给 canvas，
             # begin() 内会和 _kiosk_css_applied 比较并决定是否重新 set_kiosk_css。
             # 这样设置页改了 url_kiosk_css 立即生效，无需切页。
