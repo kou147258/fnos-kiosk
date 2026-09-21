@@ -610,10 +610,23 @@ def main():
                     os.environ.get("TRIM_SERVICE_PORT", "8280"))
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--pages-dir", default="")
-    # Chromium CDP 远程调试端口默认 9223，可被 KIOSK_CDP_PORT 覆盖以防端口冲突。
-    ap.add_argument("--cdp-port", type=int,
-                    default=int(os.environ.get("KIOSK_CDP_PORT", "9223")))
+    # Chromium CDP 远程调试端口：与 dashboard 的 cdp_proxy 必须保持一致。
+    # 优先级：--cdp-port > KIOSK_CDP_PORT > http_port+1023（从 --api 解析）
+    # 重要：v0.1.20 之前这里默认 9223，与 dashboard 的 9303 不一致 → 远程控制报
+    # "连不上 Chromium（:json 失败）：Connection refused" 的根因。
+    ap.add_argument("--cdp-port", type=int, default=0)
     args = ap.parse_args()
+    if args.cdp_port <= 0:
+        env_v = os.environ.get("KIOSK_CDP_PORT", "")
+        if env_v.strip():
+            args.cdp_port = int(env_v)
+        else:
+            try:
+                from urllib.parse import urlparse
+                u = urlparse(args.api or "")
+                args.cdp_port = (u.port or 8280) + 1023
+            except Exception:
+                args.cdp_port = 9303
 
     # ---- fb 设备 ----
     fb_attempts = 0
