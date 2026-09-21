@@ -812,7 +812,7 @@ def main():
     pages_for_viewport = cfg.get("pages") or []
     has_url_page = any(p.get("type") == "url" for p in pages_for_viewport if isinstance(p, dict))
     if has_url_page:
-        bw_cfg = "match_dashboard"
+        bw_cfg = "match_fb"  # v0.1.55: was match_dashboard; fb 物理分辨率让 dashboard 不被横压
     else:
         bw_cfg = cfg.get("browser_window") or "match_fb"
     print("[fb] 视口决策: has_url=%s bw=%s" % (has_url_page, bw_cfg), flush=True)
@@ -1056,7 +1056,7 @@ def main():
             # v0.1.46: 与冷启动一致 —— 只要有 URL 页就强制 match_dashboard
             # v0.1.48: _has_url_now 已在 cfg 读取后立即算好（见 line ~1023），这里直接复用。
             if _has_url_now:
-                win = "match_dashboard"
+                win = "match_fb"  # v0.1.55: was match_dashboard; fb 物理分辨率
             else:
                 win = cfg.get("browser_window") or "match_fb"
             if isinstance(win, str):
