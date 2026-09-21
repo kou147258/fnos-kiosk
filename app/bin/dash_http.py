@@ -623,8 +623,13 @@ class Handler(BaseHTTPRequestHandler):
     # ---- 配置导入（JSON 上传）----
     def _config_import(self):
         import json
-        obj = self._read_json()
-        if not obj or "config" not in obj:
+        # 多页配置可能很大，放宽上限
+        obj = self._read_json(limit=None)
+        if obj is None:
+            self._send_json(400, {"ok": False,
+                                  "error": "请求体为空或超过 20MB 上限"})
+            return
+        if "config" not in obj:
             self._send_json(400, {"ok": False, "error": "缺少 config 字段"})
             return
         cfg_str = obj["config"]
@@ -921,8 +926,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(400, {"ok": False, "error": err})
             return
         if path == "/api/pages/save":
-            obj = self._read_json()
-            if not obj or not obj.get("name"):
+            # 图片 / 视频 base64 后体积会超过默认 64KB，必须放宽上限
+            obj = self._read_json(limit=None)
+            if obj is None:
+                self._send_json(400, {"ok": False,
+                                      "error": "请求体为空或超过 20MB 上限"})
+                return
+            if not obj.get("name"):
                 self._send_json(400, {"ok": False, "error": "缺少 name"})
                 return
             encoding = (obj.get("encoding") or "text").lower()
