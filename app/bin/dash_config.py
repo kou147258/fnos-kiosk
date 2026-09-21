@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-APP_VERSION = "0.1.58"  # 同步 manifest.version，与 fnpack 实际打包一致
+APP_VERSION = "0.1.59"  # 同步 manifest.version，与 fnpack 实际打包一致
 THEMES = ("midnight", "graphite", "emerald", "solar", "sakura", "light")
 _ID_RE = re.compile(r"[a-z0-9_-]{1,32}")
 _URL_RE = re.compile(r"^https?://[^\s]{1,2048}$", re.IGNORECASE)
@@ -495,6 +495,16 @@ class Config:
                                            _clip_int(w[1], 240, 4320, 320)]
             else:
                 return False, "browser_window 必须是字符串 ('match_fb' / 'match_dashboard' / 'match_fb_wide') 或 [W, H] 数组"
+        if "url_viewport_size" in patch:
+            # v0.1.59: URL 页面专属渲染基准尺寸（[W, H]）。让用户可以选 1280×720
+            # （精确匹配桌面 reference）/ 1366×768 / 1440×900 / 1920×1080 / 自定义，
+            # 解决不同 dashboard CSS 4 列断点不同的问题。
+            u = patch["url_viewport_size"]
+            if isinstance(u, list) and len(u) == 2:
+                clean["url_viewport_size"] = [_clip_int(u[0], 320, 7680, 1280),
+                                              _clip_int(u[1], 240, 4320, 720)]
+            else:
+                return False, "url_viewport_size 必须是 [W, H] 数组"
         if "pages" in patch:
             pages = patch["pages"]
             if not isinstance(pages, list):

@@ -842,8 +842,20 @@ def main():
             # viewport 不再用 fb 推算的 1366，而是显式锁 1920×1080（dashboard 设计尺寸）。
             # 这避免某些 dashboard 在 1366 宽度上 CSS 仍触发 2 列断点的情况。
             if has_url_page:
-                # URL 专用：dashboard 设计尺寸，宽于大多数 dashboard 的 3 列断点
-                win_w, win_h = 1920, 1080
+                # v0.1.59: URL viewport 默认改回 1280×720（dashboard 主流设计尺寸），
+                # 精确等于桌面 reference 的窗口大小 —— 这个 dashboard 在 1280 宽
+                # 触发 3 列布局、6 张卡完整可见。在 1920 宽（v0.1.57）反而触发 4 列，
+                # 只看到 4 张卡。
+                # 同时支持 cfg.url_viewport_size = [W, H] 让用户自定义（如果某个 dashboard
+                # 的 3 列断点不是 1280 而是 1366 / 1440 / 1920，用户可以调）。
+                _uv = cfg.get("url_viewport_size")
+                if (isinstance(_uv, list) and len(_uv) == 2
+                        and all(isinstance(v, int) and v > 0 for v in _uv)
+                        and 320 <= _uv[0] <= 7680 and 240 <= _uv[1] <= 4320):
+                    win_w, win_h = int(_uv[0]), int(_uv[1])
+                else:
+                    # 默认：精确匹配桌面 reference 截图尺寸
+                    win_w, win_h = 1280, 720
             else:
                 # 非 URL 页继续按 16:9 由 fb 推算（保留向后兼容）
                 if W >= H:
@@ -1095,8 +1107,15 @@ def main():
                         new_w = W
                         new_h = int(new_w * 16 / 9)
                 elif win_lower == "url_desktop":
-                    # v0.1.57: URL 专用 viewport 1920×1080（dashboard 设计尺寸）
-                    new_w, new_h = 1920, 1080
+                    # v0.1.59: URL 专用 viewport 默认 1280×720（与桌面 reference 等尺寸），
+                    # 也支持 cfg.url_viewport_size 自定义。
+                    _uv = cfg.get("url_viewport_size")
+                    if (isinstance(_uv, list) and len(_uv) == 2
+                            and all(isinstance(v, int) and v > 0 for v in _uv)
+                            and 320 <= _uv[0] <= 7680 and 240 <= _uv[1] <= 4320):
+                        new_w, new_h = int(_uv[0]), int(_uv[1])
+                    else:
+                        new_w, new_h = 1280, 720
                 else:
                     new_w, new_h = W, H
             else:
